@@ -5,8 +5,8 @@ import { PeriodicReview } from '../../src/domain/entities/PeriodicReview';
 
 describe('Phase 2 Package 3: Database Schema Migration V3 & PeriodicReviewMapper', () => {
   it('verifies that Dexie schema is migrated to version 3 with periodicReviews table and compound index', () => {
-    // 1. Check version is 3
-    expect(db.verno).toBe(3);
+    // 1. Check version is at least 3
+    expect(db.verno).toBeGreaterThanOrEqual(3);
 
     // 2. Check table exists
     const tableNames = db.tables.map(t => t.name);

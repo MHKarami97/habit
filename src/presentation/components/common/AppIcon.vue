@@ -26,7 +26,10 @@ defineProps<{
     | 'refresh'
     | 'shield'
     | 'share'
-    | 'clock';
+    | 'clock'
+    | 'lock'
+    | 'alert-triangle'
+    | 'backspace';
   size?: number | string;
 }>();
 </script>
@@ -145,6 +148,23 @@ defineProps<{
     <g v-else-if="name === 'clock'">
       <circle cx="12" cy="12" r="10" />
       <polyline points="12 6 12 12 16 14" />
+    </g>
+    <!-- lock -->
+    <g v-else-if="name === 'lock'">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0110 0v4" />
+    </g>
+    <!-- alert-triangle -->
+    <g v-else-if="name === 'alert-triangle'">
+      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </g>
+    <!-- backspace -->
+    <g v-else-if="name === 'backspace'">
+      <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
+      <line x1="18" y1="9" x2="12" y2="15" />
+      <line x1="12" y1="9" x2="18" y2="15" />
     </g>
   </svg>
 </template>

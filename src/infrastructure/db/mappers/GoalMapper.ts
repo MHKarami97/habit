@@ -1,9 +1,18 @@
-import { Goal } from '@/domain/entities/Goal';
+import { Goal, type GoalHierarchyLevel } from '@/domain/entities/Goal';
 import { MetricTarget } from '@/domain/value-objects/MetricTarget';
-import { GoalRecord } from '../AppDatabase';
+import type { GoalRecord } from '../AppDatabase';
 
 export class GoalMapper {
   static toDomain(record: GoalRecord): Goal {
+    let blockedByGoalIds: string[] = [];
+    if (record.blockedByGoalIdsJson) {
+      try {
+        blockedByGoalIds = JSON.parse(record.blockedByGoalIdsJson);
+      } catch {
+        blockedByGoalIds = [];
+      }
+    }
+
     return new Goal({
       id: record.id,
       title: record.title,
@@ -16,15 +25,23 @@ export class GoalMapper {
       deadline: record.deadline,
       actualEndDate: record.actualEndDate,
       metric: new MetricTarget({
-        startValue: record.startValue,
-        currentValue: record.currentValue,
-        targetValue: record.targetValue,
-        unit: record.unit
+        startValue: record.startValue ?? 0,
+        currentValue: record.currentValue ?? 0,
+        targetValue: record.targetValue ?? 10,
+        unit: record.unit || 'مورد'
       }),
       isArchived: record.isArchived === 1,
+      parentId: record.parentId,
+      hierarchyLevel: (record.hierarchyLevel || 1) as GoalHierarchyLevel,
+      weight: record.weight !== undefined ? record.weight : 1,
+      blockedByGoalIds,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt
     });
+  }
+
+  static toRecord(goal: Goal): GoalRecord {
+    return this.toPersistence(goal);
   }
 
   static toPersistence(goal: Goal): GoalRecord {
@@ -44,6 +61,10 @@ export class GoalMapper {
       targetValue: goal.metric.targetValue,
       unit: goal.metric.unit,
       isArchived: goal.isArchived ? 1 : 0,
+      parentId: goal.parentId,
+      hierarchyLevel: goal.hierarchyLevel,
+      weight: goal.weight,
+      blockedByGoalIdsJson: JSON.stringify(goal.blockedByGoalIds || []),
       createdAt: goal.createdAt,
       updatedAt: goal.updatedAt
     };

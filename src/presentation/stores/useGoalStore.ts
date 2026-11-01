@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { Goal } from '@/domain/entities/Goal';
+import { Goal, type GoalHierarchyLevel } from '@/domain/entities/Goal';
 import { Milestone } from '@/domain/entities/Milestone';
 import { ActionLog } from '@/domain/entities/ActionLog';
 import { ObstacleLog } from '@/domain/entities/ObstacleLog';
@@ -11,6 +11,8 @@ import { TransitionGoalStatusUseCase } from '@/application/use-cases/goals/Trans
 import { LogActionUseCase, LogActionInput } from '@/application/use-cases/goals/LogActionUseCase';
 import { RecordObstacleUseCase, RecordObstacleInput } from '@/application/use-cases/goals/RecordObstacleUseCase';
 import { DuplicateGoalUseCase } from '@/application/use-cases/goals/DuplicateGoalUseCase';
+import { GoalHierarchyService, type GoalTreeNode } from '@/domain/services/GoalHierarchyService';
+import { GoalDependencyService } from '@/domain/services/GoalDependencyService';
 
 export interface SmartAlert {
   readonly id: string;
@@ -62,10 +64,14 @@ export const useGoalStore = defineStore('goals', () => {
   });
 
   /**
-   * تولید هشدارهای هوشمند سیستم:
-   * ۱) بیش از ۳ هدف فعال همزمان (توصیه تمرکز و پرهیز از چندپارگی)
-   * ۲) اهداف گذشته از مهلت (Overdue)
-   * ۳) اهداف فعال بدون اقدام در ۱۴ روز گذشته (راکد / Stale)
+   * ساختار درختی اهداف فعال (سلسله‌مراتب سالانه ← فصلی ← ماهانه)
+   */
+  const goalTree = computed<readonly GoalTreeNode[]>(() => {
+    return GoalHierarchyService.buildTree(goals.value);
+  });
+
+  /**
+   * هشدارهای هوشمند سیستم
    */
   const smartAlerts = computed<readonly SmartAlert[]>(() => {
     const alerts: SmartAlert[] = [];
@@ -81,7 +87,7 @@ export const useGoalStore = defineStore('goals', () => {
       });
     }
 
-    // ۲ و ۳) بررسی تک‌تک اهداف
+    // ۲) اهداف مسدود یا معوق
     for (const goal of goals.value) {
       if (goal.isOverdue(today)) {
         alerts.push({
@@ -91,6 +97,20 @@ export const useGoalStore = defineStore('goals', () => {
           message: `مهلت رسیدن به هدف به پایان رسیده است. وضعیت آن را بازبینی کنید یا مهلت را به‌روزرسانی نمایید.`,
           goalId: goal.id
         });
+      }
+
+      // هشدار اهداف مسدودشده توسط پیش‌نیازها
+      if (goal.status === 'scheduled' || goal.status === 'draft') {
+        const prereqCheck = GoalDependencyService.checkPrerequisites(goal, goals.value);
+        if (prereqCheck.isBlocked) {
+          alerts.push({
+            id: `blocked-${goal.id}`,
+            type: 'info',
+            title: `هدف مسدود: ${goal.title}`,
+            message: `این هدف منتظر تکمیل ${prereqCheck.uncompletedPrerequisites.length} هدف پیش‌نیاز است.`,
+            goalId: goal.id
+          });
+        }
       }
     }
 
@@ -117,6 +137,81 @@ export const useGoalStore = defineStore('goals', () => {
   const transitionStatus = async (goalId: string, status: GoalStatus) => {
     await transitionStatusUseCase.execute(goalId, status);
     await loadGoals();
+  };
+
+  /**
+   * محاسبه پیشرفت مؤثر یک هدف (مستقل یا وزن‌دار از فرزندان)
+   */
+  const getGoalEffectiveProgress = (goalId: string): number => {
+    const goal = goals.value.find(g => g.id === goalId);
+    if (!goal) return 0;
+    return GoalHierarchyService.calculateEffectiveProgress(goal, goals.value);
+  };
+
+  /**
+   * دریافت فرزندان مستقیم یک هدف
+   */
+  const getGoalChildren = (goalId: string): readonly Goal[] => {
+    return goals.value.filter(g => g.parentId === goalId && !g.isArchived);
+  };
+
+  /**
+   * دریافت هدف والد
+   */
+  const getGoalParent = (goalId: string): Goal | undefined => {
+    const goal = goals.value.find(g => g.id === goalId);
+    if (!goal || !goal.parentId) return undefined;
+    return goals.value.find(g => g.id === goal.parentId);
+  };
+
+  /**
+   * به‌روزرسانی پیش‌نیازها با تشخیص دور
+   */
+  const updateGoalDependencies = async (goalId: string, blockedByGoalIds: string[]) => {
+    const goal = goals.value.find(g => g.id === goalId);
+    if (!goal) return;
+
+    GoalDependencyService.validateNoCycle(goalId, blockedByGoalIds, goals.value);
+
+    const updated = goal.withDependencies(blockedByGoalIds, new Date().toISOString());
+    await container.goalRepo.save(updated);
+    await loadGoals();
+    return updated;
+  };
+
+  /**
+   * به‌روزرسانی سلسله‌مراتب و والد هدف با کنترل سقف عمق ۳ سطح
+   */
+  const updateGoalHierarchy = async (params: {
+    goalId: string;
+    parentId?: string;
+    weight?: number;
+  }) => {
+    const goal = goals.value.find(g => g.id === params.goalId);
+    if (!goal) return;
+
+    const validation = GoalHierarchyService.validateParentAssignment(
+      params.goalId,
+      params.parentId,
+      goals.value
+    );
+
+    if (!validation.isValid) {
+      throw new Error(validation.error || 'انتساب والد نامعتبر است.');
+    }
+
+    const updated = goal.withHierarchy(
+      {
+        parentId: params.parentId,
+        hierarchyLevel: validation.hierarchyLevel as GoalHierarchyLevel,
+        weight: params.weight !== undefined ? params.weight : goal.weight
+      },
+      new Date().toISOString()
+    );
+
+    await container.goalRepo.save(updated);
+    await loadGoals();
+    return updated;
   };
 
   const logAction = async (input: LogActionInput) => {
@@ -157,6 +252,7 @@ export const useGoalStore = defineStore('goals', () => {
   return {
     goals,
     filteredGoals,
+    goalTree,
     currentGoalMilestones,
     currentGoalActionLogs,
     currentGoalObstacleLogs,
@@ -169,6 +265,11 @@ export const useGoalStore = defineStore('goals', () => {
     loadGoalDetails,
     createGoal,
     transitionStatus,
+    getGoalEffectiveProgress,
+    getGoalChildren,
+    getGoalParent,
+    updateGoalDependencies,
+    updateGoalHierarchy,
     logAction,
     recordObstacle,
     duplicateGoal,

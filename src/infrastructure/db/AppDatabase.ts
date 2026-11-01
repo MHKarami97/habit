@@ -16,6 +16,10 @@ export interface GoalRecord {
   targetValue: number;
   unit: string;
   isArchived: number; // 0 or 1 for IndexedDB indexing
+  parentId?: string;
+  hierarchyLevel?: number;
+  weight?: number;
+  blockedByGoalIdsJson?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -100,6 +104,11 @@ export interface UserSettingsRecord {
   hasCompletedOnboarding: boolean;
   isStoragePersisted: boolean;
   schemaVersion: number;
+  isPinLockEnabled?: boolean;
+  pinHashHex?: string;
+  pinSaltHex?: string;
+  lockTimeoutMinutes?: number;
+  language?: 'fa' | 'en';
 }
 
 export interface ReminderLogRecord {
@@ -131,6 +140,17 @@ export interface PeriodicReviewRecord {
   updatedAt: string;
 }
 
+export interface UserTemplateRecord {
+  id: string;
+  type: 'goal' | 'habit';
+  title: string;
+  description?: string;
+  categoryId: string;
+  templateDataJson: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export class AppDatabase extends Dexie {
   goals!: Table<GoalRecord, string>;
   milestones!: Table<MilestoneRecord, string>;
@@ -141,6 +161,7 @@ export class AppDatabase extends Dexie {
   settings!: Table<UserSettingsRecord, string>;
   reminderLogs!: Table<ReminderLogRecord, string>;
   periodicReviews!: Table<PeriodicReviewRecord, string>;
+  userTemplates!: Table<UserTemplateRecord, string>;
 
   constructor() {
     super('KavoshLocalDB');
@@ -165,6 +186,22 @@ export class AppDatabase extends Dexie {
     // نسخه ۳ (فاز ۲ - بسته ۳): اضافه شدن جدول بازبینی‌های دوره‌ای هفتگی و ماهانه
     this.version(3).stores({
       periodicReviews: 'id, type, periodKey, [type+periodKey], solarYear, createdAt'
+    });
+
+    // نسخه ۴ (فاز ۳ - بسته ۱): ساختار سلسله‌مراتبی اهداف (والد/فرزند) و ایندکس‌های parentId و hierarchyLevel
+    this.version(4).stores({
+      goals: 'id, status, categoryId, priority, deadline, isArchived, parentId, hierarchyLevel, createdAt, updatedAt'
+    }).upgrade(async tx => {
+      await tx.table('goals').toCollection().modify((record: any) => {
+        if (record.hierarchyLevel === undefined) record.hierarchyLevel = 1;
+        if (record.weight === undefined) record.weight = 1;
+        if (!record.blockedByGoalIdsJson) record.blockedByGoalIdsJson = '[]';
+      });
+    });
+
+    // نسخه ۵ (فاز ۳ - بسته ۲): جدول قالب‌های شخصی ساخته‌شده توسط کاربر
+    this.version(5).stores({
+      userTemplates: 'id, type, categoryId, createdAt'
     });
   }
 }

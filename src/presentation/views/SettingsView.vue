@@ -7,7 +7,6 @@ import { useTheme, ThemeMode } from '../composables/useTheme';
 import { usePersianCalendar } from '../composables/usePersianCalendar';
 import { JsonBackupService } from '@/infrastructure/export/JsonBackupService';
 import { CsvExportService } from '@/infrastructure/export/CsvExportService';
-import { WebCryptoAdapter } from '@/infrastructure/crypto/WebCryptoAdapter';
 import { NotificationService } from '@/infrastructure/notifications/NotificationService';
 import { ReminderCoordinator } from '@/application/reminders/ReminderCoordinator';
 import { IcsExportScheduler } from '@/application/reminders/strategies/IcsExportScheduler';
@@ -21,26 +20,47 @@ import AppModal from '../components/common/AppModal.vue';
 import IosInstallModal from '../components/layout/IosInstallModal.vue';
 import OnboardingModal from '../components/onboarding/OnboardingModal.vue';
 import StorageManagerCard from '../components/settings/StorageManagerCard.vue';
+import PinSetupModal from '../components/security/PinSetupModal.vue';
+import { useAppLockStore } from '../stores/useAppLockStore';
+import { useI18n, type AppLanguage } from '../i18n/useI18n';
 
 const settingsStore = useSettingsStore();
 const habitStore = useHabitStore();
 const reminderStore = useReminderStore();
+const appLockStore = useAppLockStore();
+const { currentLocale, setLocale } = useI18n();
 const { applyTheme } = useTheme();
 const { localizeDigits, effectiveTodayIso } = usePersianCalendar();
 const { isInstalled, isInstallable, promptInstall, isIos } = usePwa();
+
+const languageOptions = [
+  { value: 'fa', label: 'فارسی (تقویم خورشیدی و راست‌به‌چپ)' },
+  { value: 'en', label: 'English (Gregorian Calendar & LTR)' }
+];
+
+const handleLanguageChange = async (val: string) => {
+  await setLocale(val as AppLanguage);
+  showToast(val === 'fa' ? 'زبان برنامه به فارسی تغییر یافت.' : 'App language changed to English.');
+};
 
 const isWipeModalOpen = ref(false);
 const isOnboardingModalOpen = ref(false);
 const isIosInstallModalOpen = ref(false);
 const isImportModalOpen = ref(false);
 const isEncryptModalOpen = ref(false);
+const isPinModalOpen = ref(false);
+const pinModalMode = ref<'setup' | 'change' | 'remove'>('setup');
 
 const encryptPassword = ref('');
+const encryptConfirmPassword = ref('');
+const encryptError = ref('');
 const importFileText = ref('');
 const importMode = ref<'merge' | 'replace'>('merge');
 const importPreview = ref<any>(null);
 const importPassword = ref('');
 const isImportEncrypted = ref(false);
+const decryptError = ref('');
+const isDecryptingPreview = ref(false);
 const messageToast = ref('');
 const isTestingNotification = ref(false);
 
@@ -143,15 +163,20 @@ const handleDownloadAllHabitsIcs = async () => {
   showToast('فایل تقویم تمام عادات با موفقیت دانلود شد.');
 };
 
+const openPinSetupModal = (mode: 'setup' | 'change' | 'remove') => {
+  pinModalMode.value = mode;
+  isPinModalOpen.value = true;
+};
+
+const handleTimeoutChange = async (event: Event) => {
+  const select = event.target as HTMLSelectElement;
+  await settingsStore.updateSettings({ lockTimeoutMinutes: parseInt(select.value, 10) });
+  showToast('زمان قفل خودکار به‌روزرسانی شد.');
+};
+
 const handleExportJson = async () => {
   try {
-    let json = await JsonBackupService.exportData();
-    if (encryptPassword.value.trim()) {
-      json = await WebCryptoAdapter.encrypt(json, encryptPassword.value.trim());
-      encryptPassword.value = '';
-      isEncryptModalOpen.value = false;
-    }
-
+    const json = await JsonBackupService.exportData();
     const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -166,6 +191,46 @@ const handleExportJson = async () => {
     showToast('فایل پشتیبان با موفقیت دانلود شد.');
   } catch (err: any) {
     showToast(`خطا در صدور پشتیبان: ${err?.message}`);
+  }
+};
+
+const handleOpenEncryptModal = () => {
+  encryptPassword.value = '';
+  encryptConfirmPassword.value = '';
+  encryptError.value = '';
+  isEncryptModalOpen.value = true;
+};
+
+const handleConfirmEncryptExport = async () => {
+  encryptError.value = '';
+  if (!encryptPassword.value || encryptPassword.value.length < 6) {
+    encryptError.value = 'گذرواژه باید حداقل ۶ کاراکتر باشد.';
+    return;
+  }
+  if (encryptPassword.value !== encryptConfirmPassword.value) {
+    encryptError.value = 'تکرار گذرواژه با گذرواژه واردشده یکسان نیست.';
+    return;
+  }
+
+  try {
+    const json = await JsonBackupService.exportData(encryptPassword.value);
+    const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `kavosh-backup-encrypted-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    isEncryptModalOpen.value = false;
+    encryptPassword.value = '';
+    encryptConfirmPassword.value = '';
+    await settingsStore.updateSettings({ lastBackupDate: new Date().toISOString() });
+    showToast('فایل پشتیبان رمزنگاری‌شده (AES-GCM ۲۵۶ بیتی) با موفقیت دانلود شد.');
+  } catch (err: any) {
+    encryptError.value = `خطا در رمزنگاری: ${err?.message}`;
   }
 };
 
@@ -222,34 +287,57 @@ const handleFileSelect = (event: Event) => {
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     const content = e.target?.result as string;
     importFileText.value = content;
-    isImportEncrypted.value = content.includes('cipherTextHex');
-    if (!isImportEncrypted.value) {
-      importPreview.value = JsonBackupService.validateAndPreview(content);
-    }
+    isImportEncrypted.value = JsonBackupService.isEncrypted(content);
+    importPassword.value = '';
+    decryptError.value = '';
+
+    const preview = await JsonBackupService.validateAndPreview(content);
+    importPreview.value = preview;
     isImportModalOpen.value = true;
+    input.value = '';
   };
   reader.readAsText(file);
 };
 
+const handleDecryptPreview = async () => {
+  if (!importPassword.value.trim()) {
+    decryptError.value = 'لطفاً گذرواژه بازگشایی را وارد کنید.';
+    return;
+  }
+
+  isDecryptingPreview.value = true;
+  decryptError.value = '';
+  try {
+    const preview = await JsonBackupService.validateAndPreview(
+      importFileText.value,
+      importPassword.value.trim()
+    );
+    if (!preview.isValid) {
+      decryptError.value = preview.errorMessage || 'گذرواژه نادرست است یا فایل آسیب دیده است.';
+    } else {
+      importPreview.value = preview;
+    }
+  } catch (err: any) {
+    decryptError.value = err?.message || 'خطا در رمزگشایی فایل';
+  } finally {
+    isDecryptingPreview.value = false;
+  }
+};
+
 const handleExecuteImport = async () => {
   try {
-    let raw = importFileText.value;
-    if (isImportEncrypted.value) {
-      if (!importPassword.value) {
-        showToast('لطفاً گذرواژه رمزگشایی فایل پشتیبان را وارد کنید.');
-        return;
-      }
-      raw = await WebCryptoAdapter.decrypt(raw, importPassword.value);
-    }
-
-    await JsonBackupService.importData(raw, importMode.value);
+    await JsonBackupService.importData(
+      importFileText.value,
+      importMode.value,
+      isImportEncrypted.value ? importPassword.value.trim() : undefined
+    );
     isImportModalOpen.value = false;
     importFileText.value = '';
     importPassword.value = '';
-    showToast('داده‌های پشتیبان با موفقیت وارد سامانه شدند.');
+    showToast('اطلاعات پشتیبان با موفقیت بازیابی شدند.');
     setTimeout(() => window.location.reload(), 1000);
   } catch (err: any) {
     showToast(`خطا در ورود داده: ${err?.message}`);
@@ -284,6 +372,13 @@ const handleWipeData = async () => {
     <section class="settings-card">
       <h3 class="card-heading">ظاهر و زبان</h3>
       <div class="fields-list">
+        <AppSelect
+          :model-value="currentLocale"
+          :options="languageOptions"
+          label="زبان برنامه / Language"
+          @update:model-value="handleLanguageChange"
+        />
+
         <AppSelect
           :model-value="settingsStore.settings.theme"
           :options="themeOptions"
@@ -378,9 +473,9 @@ const handleWipeData = async () => {
           دانلود نسخه پشتیبان کامل (JSON)
         </AppButton>
 
-        <AppButton variant="secondary" size="md" @click="isEncryptModalOpen = true">
+        <AppButton variant="secondary" size="md" @click="handleOpenEncryptModal">
           <AppIcon name="shield" size="18" />
-          دانلود نسخه رمزشده (AES-GCM)
+          دانلود نسخه رمزشده (AES-GCM ۲۵۶)
         </AppButton>
 
         <label class="file-import-label">
@@ -399,6 +494,74 @@ const handleWipeData = async () => {
           <AppIcon name="download" size="16" />
           خروجی اکسل/CSV عادات و لاگ‌ها
         </AppButton>
+      </div>
+    </section>
+
+    <!-- امنیت و قفل ورود به برنامه (PIN Lock) -->
+    <section class="settings-card">
+      <div class="card-header-with-badge">
+        <h3 class="card-heading">قفل ورود به برنامه (PIN) و امنیت نشست</h3>
+        <span :class="['status-pill', appLockStore.isPinConfigured ? 'pill-success' : 'pill-muted']">
+          {{ appLockStore.isPinConfigured ? 'قفل فعال است' : 'قفل غیرفعال است' }}
+        </span>
+      </div>
+
+      <p class="section-notice">
+        می‌توانید برای جلوگیری از مشاهده اطلاعات توسط دیگران در مواقعی که دستگاه باز است، یک رمز عددی ۴ تا ۶ رقمی برای ورود به کاوش تعیین کنید.
+      </p>
+
+      <!-- هشدار و تبیین صادقانه سطح امنیت -->
+      <div class="privacy-disclaimer-alert">
+        <div class="disclaimer-header">
+          <AppIcon name="alert-triangle" size="18" />
+          <span>توضیح صادقانه درباره سطح امنیت قفل PIN</span>
+        </div>
+        <p class="disclaimer-body">
+          توجه داشته باشید که این قفل صرفاً حفاظت سطحی (Privacy Screen) در برابر نگاه دیگران است و امنیت واقعی داده‌های ذخیره‌شده روی حافظه دستگاه نیست، مگر آنکه داده‌ها در IndexedDB نیز رمزگذاری شوند. رمزگذاری بلادرنگ کل داده‌های محلی به دلیل هزینه‌ی عملکردی بالا (افت سرعت کوئری‌ها) و خطر غیرقابل بازیابی شدن دائمی داده‌ها در صورت فراموشی کلید، به صورت پیش‌فرض فعال نشده است.
+        </p>
+      </div>
+
+      <!-- کنترل‌های پین -->
+      <div class="pin-controls-container">
+        <div v-if="!appLockStore.isPinConfigured" class="pin-action-buttons">
+          <AppButton variant="primary" size="md" @click="openPinSetupModal('setup')">
+            <AppIcon name="lock" size="18" />
+            فعال‌سازی قفل با PIN
+          </AppButton>
+        </div>
+
+        <div v-else class="pin-active-settings">
+          <div class="pin-timeout-row">
+            <label class="setting-label">زمان قفل خودکار پس از خروج یا عدم فعالیت:</label>
+            <select
+              :value="String(settingsStore.settings.lockTimeoutMinutes)"
+              class="timeout-select"
+              @change="handleTimeoutChange"
+            >
+              <option value="0">بلافاصله پس از رفتن به پس‌زمینه یا بستن</option>
+              <option value="1">پس از ۱ دقیقه عدم فعالیت</option>
+              <option value="5">پس از ۵ دقیقه عدم فعالیت</option>
+              <option value="15">پس از ۱۵ دقیقه عدم فعالیت</option>
+            </select>
+          </div>
+
+          <div class="pin-buttons-grid">
+            <AppButton variant="secondary" size="sm" @click="openPinSetupModal('change')">
+              <AppIcon name="edit" size="16" />
+              تغییر پین ورود
+            </AppButton>
+
+            <AppButton variant="outline" size="sm" @click="appLockStore.lock()">
+              <AppIcon name="lock" size="16" />
+              قفل کردن اکنون برنامه
+            </AppButton>
+
+            <AppButton variant="danger" size="sm" @click="openPinSetupModal('remove')">
+              <AppIcon name="trash" size="16" />
+              غیرفعال‌سازی قفل PIN
+            </AppButton>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -499,14 +662,41 @@ const handleWipeData = async () => {
     <!-- مودال رمزگذاری پشتیبان -->
     <AppModal :is-open="isEncryptModalOpen" title="رمزگذاری نسخه پشتیبان" @close="isEncryptModalOpen = false">
       <div class="encrypt-modal-body">
-        <p class="modal-hint">
-          گذرواژه‌ای برای محافظت از فایل پشتیبان وارد نمایید. این فایل با الگوریتم قدرتمند AES-GCM 256-bit رمزنگاری می‌شود.
-        </p>
+        <div class="crypto-specs-box">
+          <div class="crypto-specs-header">
+            <AppIcon name="shield" size="18" />
+            <span>استاندارد رمزنگاری: AES-GCM 256-bit + PBKDF2</span>
+          </div>
+          <p class="crypto-specs-desc">
+            این فایل طبق استانداردهای امنیتی <strong>NIST SP 800-132</strong> و <strong>OWASP</strong> با ۲۵۰,۰۰۰ دور مشتق‌سازی کلید PBKDF2 و الگوریتم AES-GCM ۲۵۶ بیتی رمزگذاری می‌شود.
+          </p>
+        </div>
+
+        <div class="password-loss-warning">
+          <AppIcon name="alert-triangle" size="20" class="text-danger" />
+          <p>
+            <strong>هشدار بسیار مهم:</strong> گذرواژه در هیچ سرور یا دیتابیسی ذخیره نمی‌شود. در صورت فراموشی این گذرواژه، داده‌های این فایل به هیچ عنوان قابل بازیابی نخواهند بود!
+          </p>
+        </div>
+
+        <div v-if="encryptError" class="encrypt-error-alert" role="alert">
+          <AppIcon name="alert-triangle" size="16" />
+          <span>{{ encryptError }}</span>
+        </div>
+
         <AppInput
           v-model="encryptPassword"
           type="password"
-          label="گذرواژه محافظ"
-          placeholder="حداقل ۶ کاراکتر..."
+          label="گذرواژه امن (حداقل ۶ کاراکتر)"
+          placeholder="گذرواژه..."
+          required
+        />
+
+        <AppInput
+          v-model="encryptConfirmPassword"
+          type="password"
+          label="تکرار گذرواژه"
+          placeholder="تکرار گذرواژه..."
           required
         />
       </div>
@@ -514,7 +704,7 @@ const handleWipeData = async () => {
         <AppButton variant="ghost" size="md" @click="isEncryptModalOpen = false">
           انصراف
         </AppButton>
-        <AppButton variant="primary" size="md" @click="handleExportJson">
+        <AppButton variant="primary" size="md" @click="handleConfirmEncryptExport">
           تولید و دانلود فایل رمزشده
         </AppButton>
       </template>
@@ -523,50 +713,95 @@ const handleWipeData = async () => {
     <!-- مودال پیش‌نمایش و تأیید ورود داده -->
     <AppModal :is-open="isImportModalOpen" title="ورود اطلاعات پشتیبان" @close="isImportModalOpen = false">
       <div class="import-modal-body">
-        <div v-if="isImportEncrypted" class="encrypted-notice">
-          <AppIcon name="shield" size="20" class="text-accent" />
-          <p>این فایل دارای رمزگذاری امن است. لطفاً گذرواژه آن را وارد کنید:</p>
-          <AppInput
-            v-model="importPassword"
-            type="password"
-            label="گذرواژه فایل"
-            placeholder="رمز فایل..."
-            required
-          />
-        </div>
-
-        <div v-else-if="importPreview?.isValid" class="preview-box">
-          <h4 class="preview-title">پیش‌نمایش محتوای فایل:</h4>
-          <ul>
-            <li>تعداد اهداف: {{ localizeDigits(importPreview.goalsCount) }}</li>
-            <li>تعداد عادات: {{ localizeDigits(importPreview.habitsCount) }}</li>
-            <li>تعداد لاگ‌های ثبت‌شده: {{ localizeDigits(importPreview.habitLogsCount) }}</li>
-          </ul>
-        </div>
-
-        <div class="mode-selection">
-          <label class="mode-label">شیوه اعمال داده‌ها:</label>
-          <div class="radio-row">
-            <label class="radio-item">
-              <input v-model="importMode" type="radio" value="merge" />
-              <span>ادغام با داده‌های فعلی (Merge)</span>
-            </label>
-            <label class="radio-item">
-              <input v-model="importMode" type="radio" value="replace" />
-              <span class="text-danger">جایگزینی کامل (حذف داده‌های پیشین)</span>
-            </label>
+        <!-- اگر فایل رمزشده است و هنوز رمزگشایی نشده -->
+        <div v-if="isImportEncrypted && (!importPreview || !importPreview.isValid)" class="encrypted-notice">
+          <div class="encrypted-header">
+            <AppIcon name="lock" size="24" class="text-accent" />
+            <div>
+              <strong>فایل پشتیبان رمزگذاری‌شده است</strong>
+              <p class="encrypted-subtext">این فایل با استاندارد AES-GCM رمزنگاری شده است. لطفاً گذرواژه بازگشایی را وارد کنید:</p>
+            </div>
           </div>
+
+          <div v-if="decryptError" class="encrypt-error-alert" role="alert">
+            <AppIcon name="alert-triangle" size="16" />
+            <span>{{ decryptError }}</span>
+          </div>
+
+          <div class="decrypt-row">
+            <AppInput
+              v-model="importPassword"
+              type="password"
+              label="گذرواژه فایل پشتیبان"
+              placeholder="رمز عبور..."
+              required
+            />
+            <AppButton variant="secondary" size="md" :loading="isDecryptingPreview" @click="handleDecryptPreview">
+              رمزگشایی و بررسی
+            </AppButton>
+          </div>
+        </div>
+
+        <!-- پیش‌نمایش محتوا پس از رمزگشایی یا برای فایل‌های عادی -->
+        <div v-else-if="importPreview?.isValid" class="preview-box">
+          <div class="preview-header">
+            <AppIcon name="check" size="20" class="text-success" />
+            <h4 class="preview-title">پیش‌نمایش محتوای تاییدشده فایل:</h4>
+          </div>
+          <ul class="preview-stats-list">
+            <li>تعداد اهداف: <strong>{{ localizeDigits(importPreview.goalsCount) }}</strong></li>
+            <li>تعداد عادات: <strong>{{ localizeDigits(importPreview.habitsCount) }}</strong></li>
+            <li>تعداد لاگ‌های عادت: <strong>{{ localizeDigits(importPreview.habitLogsCount) }}</strong></li>
+            <li v-if="importPreview.userTemplatesCount > 0">
+              تعداد قالب‌های شخصی: <strong>{{ localizeDigits(importPreview.userTemplatesCount) }}</strong>
+            </li>
+            <li v-if="importPreview.periodicReviewsCount > 0">
+              تعداد بازبینی‌های دوره‌ای: <strong>{{ localizeDigits(importPreview.periodicReviewsCount) }}</strong>
+            </li>
+          </ul>
+
+          <div class="mode-selection">
+            <label class="mode-label">شیوه اعمال داده‌ها:</label>
+            <div class="radio-row">
+              <label class="radio-item">
+                <input v-model="importMode" type="radio" value="merge" />
+                <span>ادغام با داده‌های فعلی (Merge)</span>
+              </label>
+              <label class="radio-item">
+                <input v-model="importMode" type="radio" value="replace" />
+                <span class="text-danger">جایگزینی کامل (حذف داده‌های پیشین)</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="import-error-box">
+          <AppIcon name="alert-triangle" size="20" class="text-danger" />
+          <span>{{ importPreview?.errorMessage || 'فایل نامعتبر است' }}</span>
         </div>
       </div>
       <template #footer>
         <AppButton variant="ghost" size="md" @click="isImportModalOpen = false">
           انصراف
         </AppButton>
-        <AppButton variant="primary" size="md" @click="handleExecuteImport">
+        <AppButton
+          v-if="importPreview?.isValid"
+          variant="primary"
+          size="md"
+          @click="handleExecuteImport"
+        >
           ورود اطلاعات
         </AppButton>
       </template>
     </AppModal>
+
+    <!-- مودال مدیریت و تنظیم PIN -->
+    <PinSetupModal
+      :is-open="isPinModalOpen"
+      :mode="pinModalMode"
+      @close="isPinModalOpen = false"
+      @success="showToast(pinModalMode === 'remove' ? 'قفل PIN با موفقیت غیرفعال شد.' : 'پین ورود با موفقیت ذخیره شد.')"
+    />
 
     <!-- مودال معارفه مجدد -->
     <OnboardingModal
@@ -905,6 +1140,170 @@ const handleWipeData = async () => {
 
 .privacy-text strong {
   color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.card-header-with-badge {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.privacy-disclaimer-alert {
+  background: var(--color-bg-hover, #fdf8f5);
+  border: 1px solid var(--color-border, #f0dfd5);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin: var(--spacing-xs) 0;
+}
+
+.privacy-disclaimer-alert .disclaimer-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--color-primary, #d2532a);
+  font-weight: 700;
+  font-size: var(--font-size-xs);
+  margin-bottom: var(--spacing-xxs);
+}
+
+.privacy-disclaimer-alert .disclaimer-body {
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.pin-controls-container {
+  margin-top: var(--spacing-xs);
+}
+
+.pin-action-buttons {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.pin-active-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.pin-timeout-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+}
+
+.timeout-select {
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border, #e5ded8);
+  background: var(--color-card, #ffffff);
+  color: var(--color-text-main, #201a18);
+  font-size: var(--font-size-sm);
+}
+
+.pin-buttons-grid {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.crypto-specs-box {
+  background: var(--color-bg-surface-soft, #f4efe9);
+  border: 1px solid var(--color-border-subtle, #e5ded8);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+}
+
+.crypto-specs-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-weight: 700;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xxs);
+}
+
+.crypto-specs-desc {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.password-loss-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  background: #fde8e8;
+  border: 1px solid #f8b4b4;
+  color: var(--color-danger, #d32f2f);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  margin-bottom: var(--spacing-sm);
+}
+
+.password-loss-warning p {
+  margin: 0;
+}
+
+.encrypt-error-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  background: #fde8e8;
+  color: var(--color-danger, #d32f2f);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  margin-bottom: var(--spacing-xs);
+}
+
+.encrypted-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.encrypted-subtext {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin: var(--spacing-xxs) 0 0;
+}
+
+.decrypt-row {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: flex-end;
+}
+
+.preview-stats-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--spacing-xs) 0 var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.import-error-box {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  background: #fde8e8;
+  color: var(--color-danger, #d32f2f);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
 }
 </style>

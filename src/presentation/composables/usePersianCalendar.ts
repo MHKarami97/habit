@@ -11,6 +11,15 @@ export function usePersianCalendar() {
   });
 
   const formatDate = (dateOrIso: string | Date, options: PersianCalendarFormatOptions = {}) => {
+    if (settingsStore.settings.language === 'en') {
+      const d = typeof dateOrIso === 'string' ? new Date(dateOrIso) : dateOrIso;
+      return d.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: options.fullMonthName ? 'long' : 'short',
+        day: 'numeric',
+        weekday: options.includeWeekday ? 'short' : undefined
+      });
+    }
     return IntlPersianCalendarAdapter.formatPersian(
       dateOrIso,
       {
@@ -22,6 +31,10 @@ export function usePersianCalendar() {
   };
 
   const formatShortDate = (dateOrIso: string | Date) => {
+    if (settingsStore.settings.language === 'en') {
+      const d = typeof dateOrIso === 'string' ? new Date(dateOrIso) : dateOrIso;
+      return d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
+    }
     return IntlPersianCalendarAdapter.formatShort(
       dateOrIso,
       settingsStore.settings.numberFormat
@@ -33,7 +46,7 @@ export function usePersianCalendar() {
   };
 
   const localizeDigits = (val: string | number) => {
-    if (settingsStore.settings.numberFormat === 'latin') {
+    if (settingsStore.settings.language === 'en' || settingsStore.settings.numberFormat === 'latin') {
       return String(val);
     }
     return SolarDateMath.toPersianDigits(val);

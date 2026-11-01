@@ -76,5 +76,31 @@ export default defineConfig({
         alias: {
             '@': fileURLToPath(new URL('./src', import.meta.url))
         }
+    },
+    build: {
+        target: 'es2022',
+        cssCodeSplit: true,
+        chunkSizeWarningLimit: 600,
+        rollupOptions: {
+            output: {
+                manualChunks: function (id) {
+                    if (id.includes('node_modules')) {
+                        if (id.includes('vue') || id.includes('pinia') || id.includes('vue-router')) {
+                            return 'vendor-vue';
+                        }
+                        if (id.includes('dexie')) {
+                            return 'vendor-dexie';
+                        }
+                        return 'vendor-misc';
+                    }
+                    if (id.includes('src/data/templates/')) {
+                        return 'data-templates';
+                    }
+                    if (id.includes('src/data/guide/')) {
+                        return 'data-guide';
+                    }
+                }
+            }
+        }
     }
 });

@@ -7,7 +7,9 @@ import AppButton from '../common/AppButton.vue';
 import AppHelpTip from '../common/AppHelpTip.vue';
 import AppIcon from '../common/AppIcon.vue';
 import InteractiveHabitGuideModal from '../help/InteractiveHabitGuideModal.vue';
+import TemplatePickerModal from '../templates/TemplatePickerModal.vue';
 import type { HabitExampleTemplate } from '../../data/interactiveExamples';
+import type { HabitTemplateData } from '@/domain/entities/UserTemplate';
 import { HabitType } from '@/domain/value-objects/HabitType';
 import { RecurrenceType, RecurrenceConfig } from '@/domain/value-objects/RecurrenceConfig';
 import { useHabitStore } from '../../stores/useHabitStore';
@@ -59,6 +61,30 @@ const handleSelectTemplate = (tmpl: HabitExampleTemplate['data']) => {
   if (tmpl.reminderTimes && tmpl.reminderTimes.length > 0) {
     reminderTime.value = tmpl.reminderTimes[0] || '20:00';
   }
+};
+
+const isTemplateModalOpen = ref(false);
+
+const handleSelectHabitTemplate = (tmpl: HabitTemplateData) => {
+  title.value = tmpl.title;
+  habitType.value = tmpl.habitType;
+  dailyTarget.value = tmpl.dailyTarget;
+  unit.value = tmpl.unit;
+  recurrenceType.value = tmpl.recurrenceType;
+  if (tmpl.recurrenceRuleJson) {
+    try {
+      const rule = JSON.parse(tmpl.recurrenceRuleJson);
+      if (rule.daysOfWeek) {
+        selectedWeekdays.value = [...rule.daysOfWeek];
+      }
+      if (rule.everyXDays) {
+        intervalDays.value = rule.everyXDays;
+      }
+    } catch {
+      // fallback
+    }
+  }
+  cue.value = tmpl.cue || '';
 };
 
 const weekDayNames = [
@@ -174,7 +200,7 @@ const handleSubmit = async () => {
 
 <template>
   <AppModal :is-open="isOpen" title="تعریف عادت جدید" @close="$emit('close')">
-    <!-- راهنمای تعاملی و مثال‌های آماده -->
+    <!-- راهنمای تعاملی و قالب‌های آماده -->
     <div class="interactive-guide-trigger-box">
       <button
         type="button"
@@ -183,6 +209,15 @@ const handleSubmit = async () => {
       >
         <AppIcon name="info" size="18" class="text-accent" />
         <span>چطور عادت بسازم؟ (مشاهده مثال‌های آماده و اصول Tiny Habits)</span>
+      </button>
+
+      <button
+        type="button"
+        class="interactive-guide-trigger-btn template-picker-btn touch-target"
+        @click="isTemplateModalOpen = true"
+      >
+        <AppIcon name="flame" size="18" class="text-accent" />
+        <span>انتخاب از کتابخانه قالب‌های آماده و شخصی عادت‌ها</span>
       </button>
     </div>
 
@@ -360,12 +395,29 @@ const handleSubmit = async () => {
       @close="isGuideModalOpen = false"
       @select-template="handleSelectTemplate"
     />
+
+    <!-- کتابخانه جامع قالب‌های آماده و شخصی عادت‌ها -->
+    <TemplatePickerModal
+      :is-open="isTemplateModalOpen"
+      initial-type="habit"
+      @close="isTemplateModalOpen = false"
+      @select-habit="handleSelectHabitTemplate"
+    />
   </AppModal>
 </template>
 
 <style scoped>
 .interactive-guide-trigger-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin-bottom: var(--spacing-xs);
+}
+
+.template-picker-btn {
+  background-color: var(--color-bg-surface-soft);
+  border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
 }
 
 .interactive-guide-trigger-btn {

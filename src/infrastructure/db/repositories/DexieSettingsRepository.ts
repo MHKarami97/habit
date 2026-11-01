@@ -26,7 +26,12 @@ export class DexieSettingsRepository implements ISettingsRepository {
       lastBackupDate: record.lastBackupDate,
       hasCompletedOnboarding: record.hasCompletedOnboarding,
       isStoragePersisted: record.isStoragePersisted,
-      schemaVersion: record.schemaVersion
+      schemaVersion: record.schemaVersion,
+      isPinLockEnabled: record.isPinLockEnabled,
+      pinHashHex: record.pinHashHex,
+      pinSaltHex: record.pinSaltHex,
+      lockTimeoutMinutes: record.lockTimeoutMinutes,
+      language: record.language
     });
   }
 
@@ -44,7 +49,12 @@ export class DexieSettingsRepository implements ISettingsRepository {
       lastBackupDate: settings.lastBackupDate,
       hasCompletedOnboarding: settings.hasCompletedOnboarding,
       isStoragePersisted: settings.isStoragePersisted,
-      schemaVersion: settings.schemaVersion
+      schemaVersion: settings.schemaVersion,
+      isPinLockEnabled: settings.isPinLockEnabled,
+      pinHashHex: settings.pinHashHex,
+      pinSaltHex: settings.pinSaltHex,
+      lockTimeoutMinutes: settings.lockTimeoutMinutes,
+      language: settings.language
     });
   }
 

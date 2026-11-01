@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useGoalStore } from '../stores/useGoalStore';
-import { useReminderStore } from '../stores/useReminderStore';
-import { usePersianCalendar } from '../composables/usePersianCalendar';
 import { GoalStatus, getGoalStatusLabel } from '@/domain/value-objects/GoalStatus';
 import { GoalStateMachine } from '@/domain/state-machine/GoalStateMachine';
+import { Goal } from '@/domain/entities/Goal';
 import { Milestone } from '@/domain/entities/Milestone';
 import { getObstacleCategoryLabel } from '@/domain/entities/ObstacleLog';
 import { db } from '@/infrastructure/db/AppDatabase';
@@ -14,11 +12,20 @@ import AppProgressBar from '../components/common/AppProgressBar.vue';
 import AppIcon from '../components/common/AppIcon.vue';
 import ActionLogModal from '../components/goals/ActionLogModal.vue';
 import ObstacleLogModal from '../components/goals/ObstacleLogModal.vue';
+import GoalDependencyModal from '../components/goals/GoalDependencyModal.vue';
+import GoalFormModal from '../components/goals/GoalFormModal.vue';
+
+import { useGoalStore } from '../stores/useGoalStore';
+import { useReminderStore } from '../stores/useReminderStore';
+import { useTemplateStore } from '../stores/useTemplateStore';
+import { usePersianCalendar } from '../composables/usePersianCalendar';
 
 const route = useRoute();
 const router = useRouter();
 const goalStore = useGoalStore();
 const reminderStore = useReminderStore();
+const templateStore = useTemplateStore();
+const saveTemplateSuccess = ref(false);
 const { formatShortDate, localizeDigits } = usePersianCalendar();
 
 const goalId = computed(() => String(route.params.id));
@@ -26,8 +33,37 @@ const goal = computed(() => goalStore.goals.find(g => g.id === goalId.value));
 
 const isActionModalOpen = ref(false);
 const isObstacleModalOpen = ref(false);
+const isDependencyModalOpen = ref(false);
+const isAddChildModalOpen = ref(false);
 const newMilestoneTitle = ref('');
 const statusError = ref('');
+
+const parentGoal = computed(() => {
+  return goalStore.getGoalParent(goalId.value);
+});
+
+const childrenGoals = computed(() => {
+  return goalStore.getGoalChildren(goalId.value);
+});
+
+const hasChildren = computed(() => childrenGoals.value.length > 0);
+
+const effectiveProgress = computed(() => {
+  return goalStore.getGoalEffectiveProgress(goalId.value);
+});
+
+const prerequisiteGoals = computed<Goal[]>(() => {
+  if (!goal.value) return [];
+  return goal.value.blockedByGoalIds
+    .map(id => goalStore.goals.find(g => g.id === id))
+    .filter((g): g is Goal => !!g);
+});
+
+const uncompletedPrerequisites = computed(() => {
+  return prerequisiteGoals.value.filter(g => g.status !== 'completed');
+});
+
+const isBlocked = computed(() => uncompletedPrerequisites.value.length > 0);
 
 onMounted(async () => {
   if (goalStore.goals.length === 0) {
@@ -77,6 +113,15 @@ const handleDuplicate = async () => {
   router.push(`/goals/${dup.id}`);
 };
 
+const handleSaveAsTemplate = async () => {
+  if (!goal.value) return;
+  await templateStore.saveGoalAsTemplate(goal.value);
+  saveTemplateSuccess.value = true;
+  setTimeout(() => {
+    saveTemplateSuccess.value = false;
+  }, 2500);
+};
+
 const handleDelete = async () => {
   if (!goal.value) return;
   if (confirm(`آیا از حذف کامل هدف «${goal.value.title}» و تمام لاگ‌های آن مطمئن هستید؟`)) {
@@ -100,6 +145,10 @@ const handleDelete = async () => {
           <AppIcon name="clock" size="16" />
           تقویم مهلت (.ics)
         </AppButton>
+        <AppButton variant="secondary" size="sm" @click="handleSaveAsTemplate">
+          <AppIcon name="settings" size="16" />
+          {{ saveTemplateSuccess ? 'قالب ذخیره شد!' : 'ذخیره به عنوان قالب' }}
+        </AppButton>
         <AppButton variant="secondary" size="sm" @click="handleDuplicate">
           تکثیر هدف
         </AppButton>
@@ -109,13 +158,41 @@ const handleDelete = async () => {
       </div>
     </div>
 
+    <!-- بنر ارجاع به هدف والد (در صورت وجود) -->
+    <div v-if="parentGoal" class="parent-goal-banner">
+      <div class="parent-banner-content">
+        <AppIcon name="target" size="18" class="text-accent" />
+        <span class="parent-desc-lbl">این هدف زیرمجموعه‌ای از:</span>
+        <RouterLink :to="`/goals/${parentGoal.id}`" class="parent-link">
+          <strong class="parent-title">{{ parentGoal.title }}</strong>
+          <span class="parent-lvl-badge">({{ parentGoal.hierarchyLevelLabel }})</span>
+          <AppIcon name="chevron-left" size="14" />
+        </RouterLink>
+      </div>
+      <span v-if="goal.weight && goal.weight > 1" class="parent-weight-info">
+        وزن در والد: {{ localizeDigits(goal.weight) }}
+      </span>
+    </div>
+
     <!-- کارت اطلاعات کلی هدف -->
     <article class="detail-overview-card">
       <header class="detail-header">
-        <h2 class="detail-title">{{ goal.title }}</h2>
-        <span class="detail-status-pill">
-          {{ getGoalStatusLabel(goal.status) }}
-        </span>
+        <div class="title-and-badges">
+          <span :class="['level-badge-tag', `lvl-${goal.hierarchyLevel}`]">
+            {{ goal.hierarchyLevelLabel }}
+          </span>
+          <h2 class="detail-title">{{ goal.title }}</h2>
+        </div>
+
+        <div class="header-status-group">
+          <span v-if="isBlocked" class="blocked-badge" title="دارای پیش‌نیاز تکمیل‌نشده">
+            <AppIcon name="lock" size="14" />
+            مسدود ({{ localizeDigits(uncompletedPrerequisites.length) }} پیش‌نیاز)
+          </span>
+          <span class="detail-status-pill">
+            {{ getGoalStatusLabel(goal.status) }}
+          </span>
+        </div>
       </header>
 
       <p class="why-box">
@@ -130,20 +207,31 @@ const handleDelete = async () => {
       <!-- سنجه موفقیت و درصد -->
       <div class="metric-progress-box">
         <div class="metric-numbers-row">
-          <span>
+          <span v-if="hasChildren">
+            پیشرفت کلی: <strong>میانگین وزنی {{ localizeDigits(childrenGoals.length) }} هدف فرزند</strong>
+          </span>
+          <span v-else>
             سنجه فعلی: <strong>{{ localizeDigits(goal.metric.currentValue) }}</strong> / {{ localizeDigits(goal.metric.targetValue) }} {{ goal.metric.unit }}
           </span>
           <span class="metric-percent-label">
-            {{ localizeDigits(goal.metric.progressPercentage) }}٪ پیشرفت
+            {{ localizeDigits(effectiveProgress) }}٪ پیشرفت
           </span>
         </div>
-        <AppProgressBar :percentage="goal.metric.progressPercentage" :height="10" />
+        <AppProgressBar :percentage="effectiveProgress" :height="10" />
       </div>
 
-      <!-- انتقال وضعیت با ماشین وضعیت -->
+      <!-- انتقال وضعیت با ماشین وضعیت و راهنمای قوانین -->
       <div class="status-transitions-box">
-        <span class="transition-label">تغییر وضعیت مجاز:</span>
-        <p v-if="statusError" class="status-error-text">{{ statusError }}</p>
+        <div class="transition-header-row">
+          <span class="transition-label">تغییر وضعیت مجاز:</span>
+          <span class="rules-tip-lbl">(طبق قوانین ماشین وضعیت و سلسله‌مراتب)</span>
+        </div>
+
+        <p v-if="statusError" class="status-error-text">
+          <AppIcon name="alert" size="14" />
+          <span>{{ statusError }}</span>
+        </p>
+
         <div class="status-buttons-row">
           <button
             v-for="st in allowedNextStatuses"
@@ -157,6 +245,84 @@ const handleDelete = async () => {
         </div>
       </div>
     </article>
+
+    <!-- بخش زیرمجموعه‌ها و فرزندان (سلسله‌مراتب) -->
+    <section v-if="goal.canHaveChildren" class="sub-section">
+      <div class="section-header-row">
+        <div>
+          <h3 class="section-heading">اهداف فرزند (سطح {{ localizeDigits(goal.hierarchyLevel + 1) }})</h3>
+          <p class="section-sub-desc">پیشرفت این هدف بر اساس مجموع وزنی این فرزندان محاسبه می‌شود.</p>
+        </div>
+        <AppButton variant="primary" size="sm" @click="isAddChildModalOpen = true">
+          <AppIcon name="plus" size="16" />
+          افزودن فرزند
+        </AppButton>
+      </div>
+
+      <div v-if="childrenGoals.length > 0" class="children-grid">
+        <RouterLink
+          v-for="child in childrenGoals"
+          :key="child.id"
+          :to="`/goals/${child.id}`"
+          class="child-card-link"
+        >
+          <div class="child-card-header">
+            <strong class="child-title">{{ child.title }}</strong>
+            <span :class="['child-status-badge', `status-${child.status}`]">
+              {{ getGoalStatusLabel(child.status) }}
+            </span>
+          </div>
+
+          <div class="child-meta-row">
+            <span class="child-weight-tag">وزن: {{ localizeDigits(child.weight) }}</span>
+            <span class="child-progress-tag">
+              پیشرفت: {{ localizeDigits(goalStore.getGoalEffectiveProgress(child.id)) }}٪
+            </span>
+          </div>
+          <AppProgressBar :percentage="goalStore.getGoalEffectiveProgress(child.id)" :height="6" />
+        </RouterLink>
+      </div>
+      <p v-else class="empty-hint">هنوز هیچ هدف فرزندی برای این هدف تعریف نشده است.</p>
+    </section>
+
+    <!-- بخش پیش‌نیازها و وابستگی‌ها -->
+    <section class="sub-section">
+      <div class="section-header-row">
+        <div>
+          <h3 class="section-heading">پیش‌نیازها و وابستگی‌ها</h3>
+          <p class="section-sub-desc">اهدافی که باید قبل از آغاز و فعال شدن این هدف تکمیل شوند.</p>
+        </div>
+        <AppButton variant="secondary" size="sm" @click="isDependencyModalOpen = true">
+          <AppIcon name="lock" size="16" />
+          مدیریت وابستگی‌ها
+        </AppButton>
+      </div>
+
+      <div v-if="prerequisiteGoals.length > 0" class="prereqs-detail-list">
+        <div
+          v-for="prereq in prerequisiteGoals"
+          :key="prereq.id"
+          class="prereq-item-card"
+        >
+          <div class="prereq-status-icon">
+            <AppIcon v-if="prereq.status === 'completed'" name="check" size="16" class="text-success" />
+            <AppIcon v-else name="lock" size="16" class="text-warning" />
+          </div>
+          <div class="prereq-item-info">
+            <RouterLink :to="`/goals/${prereq.id}`" class="prereq-item-link">
+              {{ prereq.title }}
+            </RouterLink>
+            <span class="prereq-state-note">
+              {{ prereq.status === 'completed' ? 'تکمیل‌شده (مانع برطرف شد)' : 'در حال انجام / پیش‌نویس (مانع فعال)' }}
+            </span>
+          </div>
+          <span :class="['child-status-badge', `status-${prereq.status}`]">
+            {{ getGoalStatusLabel(prereq.status) }}
+          </span>
+        </div>
+      </div>
+      <p v-else class="empty-hint">هیچ پیش‌نیازی برای این هدف تعیین نشده است (شروع آزاد).</p>
+    </section>
 
     <!-- بخش زیرهدف‌ها / مایلستون‌ها -->
     <section class="sub-section">
@@ -263,6 +429,16 @@ const handleDelete = async () => {
       :goal-id="goal.id"
       @close="isObstacleModalOpen = false"
     />
+    <GoalDependencyModal
+      :is-open="isDependencyModalOpen"
+      :goal-id="goal.id"
+      @close="isDependencyModalOpen = false"
+    />
+    <GoalFormModal
+      :is-open="isAddChildModalOpen"
+      :initial-parent-id="goal.id"
+      @close="isAddChildModalOpen = false"
+    />
   </div>
 </template>
 
@@ -329,6 +505,97 @@ const handleDelete = async () => {
   color: var(--color-accent);
   font-size: var(--font-size-xs);
   font-weight: 700;
+}
+
+.parent-goal-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--color-bg-surface-soft);
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-xs);
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.parent-banner-content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
+.parent-desc-lbl {
+  color: var(--color-text-muted);
+}
+
+.parent-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.parent-title {
+  color: var(--color-accent);
+}
+
+.parent-lvl-badge {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.parent-weight-info {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.title-and-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
+.level-badge-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.lvl-1 {
+  background-color: var(--color-info-subtle);
+  color: var(--color-info);
+}
+.lvl-2 {
+  background-color: var(--color-accent-subtle);
+  color: var(--color-accent);
+}
+.lvl-3 {
+  background-color: var(--color-bg-surface-elevated);
+  color: var(--color-text-primary);
+}
+
+.header-status-group {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.blocked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-warning-subtle);
+  color: var(--color-warning);
 }
 
 .why-box {
@@ -404,6 +671,120 @@ const handleDelete = async () => {
 .transition-btn:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
+}
+
+.transition-header-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
+.rules-tip-lbl {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.section-sub-desc {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.children-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--spacing-xs);
+}
+
+@media (min-width: 640px) {
+  .children-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.child-card-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  background-color: var(--color-bg-surface);
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm);
+  transition: all var(--transition-fast);
+}
+
+.child-card-link:hover {
+  border-color: var(--color-border-strong);
+  background-color: var(--color-bg-surface-soft);
+}
+
+.child-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.child-title {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.child-status-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.child-meta-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.prereqs-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.prereq-item-card {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  background-color: var(--color-bg-surface);
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.prereq-status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.prereq-item-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 2px;
+}
+
+.prereq-item-link {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.prereq-item-link:hover {
+  color: var(--color-accent);
+}
+
+.prereq-state-note {
+  font-size: 11px;
+  color: var(--color-text-muted);
 }
 
 .sub-section {

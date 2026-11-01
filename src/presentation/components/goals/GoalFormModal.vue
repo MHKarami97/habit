@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed, watch } from 'vue';
 import AppModal from '../common/AppModal.vue';
 import AppInput from '../common/AppInput.vue';
 import AppSelect from '../common/AppSelect.vue';
@@ -8,14 +8,17 @@ import AppHelpTip from '../common/AppHelpTip.vue';
 import AppIcon from '../common/AppIcon.vue';
 import PersianDatePickerBottomSheet from '../calendar/PersianDatePickerBottomSheet.vue';
 import InteractiveGoalGuideModal from '../help/InteractiveGoalGuideModal.vue';
+import TemplatePickerModal from '../templates/TemplatePickerModal.vue';
 import type { GoalExampleTemplate } from '../../data/interactiveExamples';
+import type { GoalTemplateData } from '@/domain/entities/UserTemplate';
 import { GoalPriority } from '@/domain/value-objects/GoalPriority';
 import { GoalStatus } from '@/domain/value-objects/GoalStatus';
 import { useGoalStore } from '../../stores/useGoalStore';
 import { usePersianCalendar } from '../../composables/usePersianCalendar';
 
-defineProps<{
+const props = defineProps<{
   isOpen: boolean;
+  initialParentId?: string;
 }>();
 
 const emit = defineEmits<{
@@ -39,12 +42,91 @@ const startValue = ref(0);
 const targetValue = ref(10);
 const unit = ref('مورد');
 
+// فیلدهای سلسله‌مراتب و وابستگی
+const parentId = ref<string>('');
+const weight = ref<number>(1);
+const selectedPrereqIds = ref<string[]>([]);
+
 // کنترل باز شدن DatePicker
 const isStartDatePickerOpen = ref(false);
 const isDeadlinePickerOpen = ref(false);
 const isSubmitting = ref(false);
 const formError = ref('');
 const isGuideModalOpen = ref(false);
+const isTemplateModalOpen = ref(false);
+
+const handleSelectGoalTemplate = (tmpl: GoalTemplateData) => {
+  title.value = tmpl.title;
+  whyStatement.value = tmpl.whyStatement;
+  priority.value = tmpl.priority;
+  startValue.value = tmpl.startValue;
+  targetValue.value = tmpl.targetValue;
+  unit.value = tmpl.unit;
+
+  if (tmpl.durationDays) {
+    const d = new Date();
+    d.setDate(d.getDate() + tmpl.durationDays);
+    deadline.value = d.toISOString().slice(0, 10);
+  }
+};
+
+const parentOptions = computed(() => {
+  const options = [{ value: '', label: 'بدون والد (سطح ۱: سالانه / کلان)' }];
+  for (const g of goalStore.goals) {
+    if (g.canHaveChildren && !g.isArchived) {
+      options.push({
+        value: g.id,
+        label: `${g.title} (${g.hierarchyLevelLabel})`
+      });
+    }
+  }
+  return options;
+});
+
+const calculatedLevel = computed<1 | 2 | 3>(() => {
+  if (!parentId.value) return 1;
+  const parent = goalStore.goals.find(g => g.id === parentId.value);
+  if (!parent) return 1;
+  const nextLvl = parent.hierarchyLevel + 1;
+  return (nextLvl > 3 ? 3 : nextLvl) as 1 | 2 | 3;
+});
+
+const calculatedLevelLabel = computed(() => {
+  switch (calculatedLevel.value) {
+    case 1:
+      return 'سطح ۱ (سالانه / استراتژیک)';
+    case 2:
+      return 'سطح ۲ (فصلی / مرحله‌ای)';
+    case 3:
+      return 'سطح ۳ (ماهانه / تاکتیکی)';
+    default:
+      return 'سطح ۱ (سالانه / استراتژیک)';
+  }
+});
+
+const candidatePrerequisites = computed(() => {
+  return goalStore.goals.filter(g => !g.isArchived && g.id !== parentId.value);
+});
+
+const togglePrereq = (id: string) => {
+  if (selectedPrereqIds.value.includes(id)) {
+    selectedPrereqIds.value = selectedPrereqIds.value.filter(x => x !== id);
+  } else {
+    selectedPrereqIds.value.push(id);
+  }
+};
+
+watch(
+  () => [props.isOpen, props.initialParentId] as const,
+  ([isOpen, initParentId]) => {
+    if (isOpen) {
+      if (initParentId) {
+        parentId.value = String(initParentId);
+      }
+    }
+  },
+  { immediate: true }
+);
 
 const handleSelectTemplate = (tmpl: GoalExampleTemplate['data']) => {
   title.value = tmpl.title;
@@ -130,12 +212,18 @@ const handleSubmit = async () => {
       deadline: deadline.value,
       startValue: Number(startValue.value),
       targetValue: Number(targetValue.value),
-      unit: unit.value
+      unit: unit.value,
+      parentId: parentId.value || undefined,
+      weight: Number(weight.value) || 1,
+      blockedByGoalIds: selectedPrereqIds.value
     });
 
     // ریست فرم
     title.value = '';
     whyStatement.value = '';
+    parentId.value = '';
+    weight.value = 1;
+    selectedPrereqIds.value = [];
     wizardStep.value = 1;
     emit('close');
   } catch (err: any) {
@@ -148,7 +236,7 @@ const handleSubmit = async () => {
 
 <template>
   <AppModal :is-open="isOpen" title="تعریف هدف جدید" @close="$emit('close')">
-    <!-- راهنمای تعاملی و مثال‌های آماده -->
+    <!-- راهنمای تعاملی و قالب‌های آماده -->
     <div class="interactive-guide-trigger-box">
       <button
         type="button"
@@ -157,6 +245,15 @@ const handleSubmit = async () => {
       >
         <AppIcon name="info" size="18" class="text-accent" />
         <span>چطور هدف بسازم؟ (مشاهده مثال‌های آماده و اصول SMART)</span>
+      </button>
+
+      <button
+        type="button"
+        class="interactive-guide-trigger-btn template-picker-btn touch-target"
+        @click="isTemplateModalOpen = true"
+      >
+        <AppIcon name="target" size="18" class="text-info" />
+        <span>انتخاب از کتابخانه قالب‌های آماده و شخصی</span>
       </button>
     </div>
 
@@ -232,6 +329,42 @@ const handleSubmit = async () => {
             required
           />
         </div>
+
+        <!-- انتخاب والد و سطح در سلسله‌مراتب -->
+        <div class="field-container">
+          <div class="label-with-tip">
+            <label class="field-label">هدف والد (سلسله‌مراتب ۳ سطحی)</label>
+            <AppHelpTip
+              tip="می‌توانید این هدف را زیرمجموعه یک هدف بزرگ‌تر قرار دهید. سلسله‌مراتب حداکثر تا ۳ سطح مجاز است: سالانه ← فصلی ← ماهانه."
+              good-example="هدف فصلی «نوشتن پیش‌نویس کتاب» به عنوان فرزند هدف سالانه «انتشار کتاب»"
+              bad-example="ایجاد عمق بی‌پایان که باعث سردرگمی شود"
+            />
+          </div>
+          <AppSelect
+            v-model="parentId"
+            :options="parentOptions"
+          />
+          <div class="hierarchy-level-indicator">
+            <span class="level-indicator-badge">
+              سطح هدف: {{ calculatedLevelLabel }}
+            </span>
+          </div>
+        </div>
+
+        <div v-if="parentId" class="field-container">
+          <div class="label-with-tip">
+            <label class="field-label">وزن هدف در پیشرفت والد</label>
+            <AppHelpTip
+              tip="پیشرفت هدف والد از میانگین وزنی اهداف فرزند محاسبه می‌شود. اگر این بخش اهمیت بیشتری دارد، وزن بالاتری به آن بدهید (مثلاً ۲ یا ۳)."
+            />
+          </div>
+          <AppInput
+            v-model.number="weight"
+            type="number"
+            min="1"
+            placeholder="پیش‌فرض: ۱"
+          />
+        </div>
       </section>
 
       <!-- بخش گام ۲ یا کل فرم سریع: سنجه -->
@@ -280,6 +413,33 @@ const handleSubmit = async () => {
             <button type="button" class="date-btn" @click="isDeadlinePickerOpen = true">
               {{ formatShortDate(deadline) }}
             </button>
+          </div>
+        </div>
+
+        <!-- پیش‌نیازها و وابستگی‌ها -->
+        <div v-if="candidatePrerequisites.length > 0" class="field-container">
+          <div class="label-with-tip">
+            <label class="field-label">اهداف پیش‌نیاز (اختیاری)</label>
+            <AppHelpTip
+              tip="اگر این هدف تا قبل از تکمیل اهداف دیگری نباید شروع شود، آن‌ها را به عنوان پیش‌نیاز علامت بزنید."
+              good-example="برای «شرکت در مسابقه دو»، پیش‌نیاز «خرید کفش مناسب» باشد"
+            />
+          </div>
+          <div class="prereqs-compact-list">
+            <label
+              v-for="cand in candidatePrerequisites"
+              :key="cand.id"
+              class="prereq-checkbox-row"
+            >
+              <input
+                type="checkbox"
+                class="prereq-checkbox"
+                :checked="selectedPrereqIds.includes(cand.id)"
+                @change="togglePrereq(cand.id)"
+              />
+              <span class="prereq-cand-title">{{ cand.title }}</span>
+              <span class="prereq-cand-lvl">({{ cand.hierarchyLevelLabel }})</span>
+            </label>
           </div>
         </div>
       </section>
@@ -345,12 +505,29 @@ const handleSubmit = async () => {
       @close="isGuideModalOpen = false"
       @select-template="handleSelectTemplate"
     />
+
+    <!-- کتابخانه جامع قالب‌های آماده و شخصی -->
+    <TemplatePickerModal
+      :is-open="isTemplateModalOpen"
+      initial-type="goal"
+      @close="isTemplateModalOpen = false"
+      @select-goal="handleSelectGoalTemplate"
+    />
   </AppModal>
 </template>
 
 <style scoped>
 .interactive-guide-trigger-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin-bottom: var(--spacing-xs);
+}
+
+.template-picker-btn {
+  background-color: var(--color-info-subtle);
+  border-color: var(--color-info);
+  color: var(--color-info);
 }
 
 .interactive-guide-trigger-btn {
@@ -524,5 +701,60 @@ const handleSubmit = async () => {
   justify-content: flex-end;
   gap: var(--spacing-sm);
   margin-top: var(--spacing-sm);
+}
+
+.hierarchy-level-indicator {
+  margin-top: 2px;
+}
+
+.level-indicator-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-accent);
+  background-color: var(--color-accent-subtle);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.prereqs-compact-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  max-height: 160px;
+  overflow-y: auto;
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-xs);
+  background-color: var(--color-bg-surface-soft);
+}
+
+.prereq-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.prereq-checkbox-row:hover {
+  background-color: var(--color-bg-surface);
+}
+
+.prereq-checkbox {
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.prereq-cand-title {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.prereq-cand-lvl {
+  font-size: 11px;
+  color: var(--color-text-muted);
 }
 </style>

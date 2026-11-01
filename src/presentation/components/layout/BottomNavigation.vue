@@ -1,24 +1,28 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router';
 import AppIcon from '../common/AppIcon.vue';
+import { useI18n } from '../../i18n/useI18n';
+
+const { t } = useI18n();
 
 interface NavItem {
   to: string;
-  label: string;
+  labelKey: string;
+  defaultLabel: string;
   icon: 'calendar' | 'target' | 'flame' | 'chart' | 'settings';
 }
 
 const navItems: readonly NavItem[] = [
-  { to: '/', label: 'امروز', icon: 'calendar' },
-  { to: '/goals', label: 'اهداف', icon: 'target' },
-  { to: '/habits', label: 'عادت‌ها', icon: 'flame' },
-  { to: '/analytics', label: 'آمار', icon: 'chart' },
-  { to: '/settings', label: 'تنظیمات', icon: 'settings' }
+  { to: '/', labelKey: 'nav.today', defaultLabel: 'امروز', icon: 'calendar' },
+  { to: '/goals', labelKey: 'nav.goals', defaultLabel: 'اهداف', icon: 'target' },
+  { to: '/habits', labelKey: 'nav.habits', defaultLabel: 'عادت‌ها', icon: 'flame' },
+  { to: '/analytics', labelKey: 'nav.analytics', defaultLabel: 'آمار', icon: 'chart' },
+  { to: '/settings', labelKey: 'nav.settings', defaultLabel: 'تنظیمات', icon: 'settings' }
 ];
 </script>
 
 <template>
-  <nav class="bottom-nav-bar" aria-label="ناوبری اصلی">
+  <nav class="bottom-nav-bar" :aria-label="t('nav.today', 'ناوبری اصلی')">
     <div class="bottom-nav-container">
       <RouterLink
         v-for="item in navItems"
@@ -28,7 +32,7 @@ const navItems: readonly NavItem[] = [
         active-class="tab-active"
       >
         <AppIcon :name="item.icon" size="22" />
-        <span class="tab-label">{{ item.label }}</span>
+        <span class="tab-label">{{ t(item.labelKey, item.defaultLabel) }}</span>
       </RouterLink>
     </div>
   </nav>

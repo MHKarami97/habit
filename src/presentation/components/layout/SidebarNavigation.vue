@@ -1,25 +1,29 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router';
 import AppIcon from '../common/AppIcon.vue';
+import { useI18n } from '../../i18n/useI18n';
+
+const { t } = useI18n();
 
 interface NavItem {
   to: string;
-  label: string;
+  labelKey: string;
+  defaultLabel: string;
   icon: 'calendar' | 'target' | 'flame' | 'chart' | 'settings' | 'info';
 }
 
 const navItems: readonly NavItem[] = [
-  { to: '/', label: 'امروز و تمرکز', icon: 'calendar' },
-  { to: '/goals', label: 'اهداف', icon: 'target' },
-  { to: '/habits', label: 'ردیابی عادت‌ها', icon: 'flame' },
-  { to: '/analytics', label: 'آمار و پایبندی', icon: 'chart' },
-  { to: '/guide', label: 'راهنمای علمی و عملی', icon: 'info' },
-  { to: '/settings', label: 'تنظیمات و پشتیبان', icon: 'settings' }
+  { to: '/', labelKey: 'nav.today', defaultLabel: 'امروز و تمرکز', icon: 'calendar' },
+  { to: '/goals', labelKey: 'nav.goals', defaultLabel: 'اهداف', icon: 'target' },
+  { to: '/habits', labelKey: 'nav.habits', defaultLabel: 'ردیابی عادت‌ها', icon: 'flame' },
+  { to: '/analytics', labelKey: 'nav.analytics', defaultLabel: 'آمار و پایبندی', icon: 'chart' },
+  { to: '/guide', labelKey: 'nav.guide', defaultLabel: 'راهنمای علمی و عملی', icon: 'info' },
+  { to: '/settings', labelKey: 'nav.settings', defaultLabel: 'تنظیمات و پشتیبان', icon: 'settings' }
 ];
 </script>
 
 <template>
-  <aside class="sidebar-aside" aria-label="ناوبری جانبی">
+  <aside class="sidebar-aside" :aria-label="t('nav.today', 'ناوبری جانبی')">
     <div class="sidebar-brand">
       <div class="brand-logo-mark">
         <AppIcon name="target" size="24" />
@@ -39,7 +43,7 @@ const navItems: readonly NavItem[] = [
         active-class="sidebar-link-active"
       >
         <AppIcon :name="item.icon" size="20" />
-        <span class="link-text">{{ item.label }}</span>
+        <span class="link-text">{{ t(item.labelKey, item.defaultLabel) }}</span>
       </RouterLink>
     </nav>
 

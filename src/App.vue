@@ -14,9 +14,14 @@ import AppButton from './presentation/components/common/AppButton.vue';
 import AppIcon from './presentation/components/common/AppIcon.vue';
 
 import { IndexedDBHealthService, type DatabaseHealthReport } from './infrastructure/db/IndexedDBHealthService';
+import { useAppLockStore } from './presentation/stores/useAppLockStore';
+import PinLockOverlay from './presentation/components/security/PinLockOverlay.vue';
+import { useI18n } from './presentation/i18n/useI18n';
 
 const settingsStore = useSettingsStore();
+const appLockStore = useAppLockStore();
 const { applyTheme } = useTheme();
+const { initI18n } = useI18n();
 const { isInstalled, needRefresh, promptInstall, isIos } = usePwa();
 
 const isIosModalOpen = ref(false);
@@ -28,6 +33,8 @@ const isOnboardingOpen = computed(() => {
 onMounted(async () => {
   await settingsStore.loadSettings();
   applyTheme(settingsStore.settings.theme);
+  await initI18n();
+  await appLockStore.init();
 
   // بررسی سلامت دیتابیس محلی
   dbHealthReport.value = await IndexedDBHealthService.checkHealth();
@@ -107,6 +114,9 @@ const reloadApp = () => {
       :is-open="isOnboardingOpen"
       @close="settingsStore.completeOnboarding()"
     />
+
+    <!-- لایه قفل ورود (PIN Lock Overlay) -->
+    <PinLockOverlay />
   </div>
 </template>
 

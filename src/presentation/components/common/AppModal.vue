@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { watch, onUnmounted } from 'vue';
 import AppIcon from './AppIcon.vue';
 
-defineProps<{
+const props = defineProps<{
   isOpen: boolean;
   title?: string;
 }>();
@@ -15,6 +16,32 @@ const onBackdropClick = (e: MouseEvent) => {
     emit('close');
   }
 };
+
+const onKeyDown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && props.isOpen) {
+    emit('close');
+  }
+};
+
+watch(
+  () => props.isOpen,
+  open => {
+    if (typeof window !== 'undefined') {
+      if (open) {
+        window.addEventListener('keydown', onKeyDown);
+      } else {
+        window.removeEventListener('keydown', onKeyDown);
+      }
+    }
+  },
+  { immediate: true }
+);
+
+onUnmounted(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('keydown', onKeyDown);
+  }
+});
 </script>
 
 <template>

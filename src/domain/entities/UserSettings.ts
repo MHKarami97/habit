@@ -12,6 +12,11 @@ export interface UserSettingsProps {
   readonly hasCompletedOnboarding: boolean;
   readonly isStoragePersisted: boolean;
   readonly schemaVersion: number;
+  readonly isPinLockEnabled?: boolean;
+  readonly pinHashHex?: string;
+  readonly pinSaltHex?: string;
+  readonly lockTimeoutMinutes?: number;
+  readonly language?: 'fa' | 'en';
 }
 
 export class UserSettings {
@@ -31,6 +36,11 @@ export class UserSettings {
   readonly hasCompletedOnboarding: boolean;
   readonly isStoragePersisted: boolean;
   readonly schemaVersion: number;
+  readonly isPinLockEnabled: boolean;
+  readonly pinHashHex?: string;
+  readonly pinSaltHex?: string;
+  readonly lockTimeoutMinutes: number;
+  readonly language: 'fa' | 'en';
 
   constructor(props: Partial<UserSettingsProps>) {
     this.id = UserSettings.SINGLETON_ID;
@@ -46,6 +56,11 @@ export class UserSettings {
     this.hasCompletedOnboarding = props.hasCompletedOnboarding ?? false;
     this.isStoragePersisted = props.isStoragePersisted ?? false;
     this.schemaVersion = props.schemaVersion ?? UserSettings.CURRENT_SCHEMA_VERSION;
+    this.isPinLockEnabled = props.isPinLockEnabled ?? false;
+    this.pinHashHex = props.pinHashHex;
+    this.pinSaltHex = props.pinSaltHex;
+    this.lockTimeoutMinutes = props.lockTimeoutMinutes ?? 0;
+    this.language = props.language || 'fa';
   }
 
   static createDefault(): UserSettings {

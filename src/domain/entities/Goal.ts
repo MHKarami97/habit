@@ -2,6 +2,8 @@ import { GoalPriority } from '../value-objects/GoalPriority';
 import { GoalStatus } from '../value-objects/GoalStatus';
 import { MetricTarget } from '../value-objects/MetricTarget';
 
+export type GoalHierarchyLevel = 1 | 2 | 3; // ۱: سالانه، ۲: فصلی، ۳: ماهانه
+
 export interface GoalProps {
   readonly id: string;
   readonly title: string;
@@ -15,6 +17,10 @@ export interface GoalProps {
   readonly actualEndDate?: string; // ISO date YYYY-MM-DD
   readonly metric: MetricTarget;
   readonly isArchived: boolean;
+  readonly parentId?: string; // شناسه هدف والد (اختیاری)
+  readonly hierarchyLevel?: GoalHierarchyLevel; // پیش‌فرض: ۱ (سطح ریشه)
+  readonly weight?: number; // وزن در محاسبه پیشرفت والد (پیش‌فرض: ۱)
+  readonly blockedByGoalIds?: readonly string[]; // شناسه‌های اهداف پیش‌نیاز
   readonly createdAt: string; // ISO timestamp
   readonly updatedAt: string; // ISO timestamp
 }
@@ -32,6 +38,10 @@ export class Goal {
   readonly actualEndDate?: string;
   readonly metric: MetricTarget;
   readonly isArchived: boolean;
+  readonly parentId?: string;
+  readonly hierarchyLevel: GoalHierarchyLevel;
+  readonly weight: number;
+  readonly blockedByGoalIds: readonly string[];
   readonly createdAt: string;
   readonly updatedAt: string;
 
@@ -40,6 +50,16 @@ export class Goal {
     if (!props.title.trim()) throw new Error('عنوان هدف الزامی است');
     if (!props.whyStatement.trim()) throw new Error('دلیل و چرایی هدف (Why) الزامی است');
     if (!props.deadline) throw new Error('تعیین مهلت پایان هدف الزامی است');
+
+    const level = props.hierarchyLevel || 1;
+    if (level < 1 || level > 3) {
+      throw new Error('سطح سلسله‌مراتب هدف باید ۱ (سالانه)، ۲ (فصلی) یا ۳ (ماهانه) باشد');
+    }
+
+    const weight = props.weight !== undefined ? props.weight : 1;
+    if (weight <= 0) {
+      throw new Error('وزن هدف در سلسله‌مراتب باید بزرگتر از صفر باشد');
+    }
 
     this.id = props.id;
     this.title = props.title.trim();
@@ -53,12 +73,44 @@ export class Goal {
     this.actualEndDate = props.actualEndDate;
     this.metric = props.metric;
     this.isArchived = props.isArchived;
+    this.parentId = props.parentId?.trim() || undefined;
+    this.hierarchyLevel = level;
+    this.weight = weight;
+    this.blockedByGoalIds = props.blockedByGoalIds ? [...props.blockedByGoalIds] : [];
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }
 
   /**
-   * محاسبه مدت زمان واقعی یا جاری هدف به روز (هرگز در دیتابیس ذخیره نمی‌شود)
+   * آیا این هدف ریشه (Root / Level 1) است؟
+   */
+  get isRoot(): boolean {
+    return !this.parentId || this.hierarchyLevel === 1;
+  }
+
+  /**
+   * آیا این هدف می‌تواند دارای فرزند باشد؟ (حداکثر عمق = ۳)
+   */
+  get canHaveChildren(): boolean {
+    return this.hierarchyLevel < 3;
+  }
+
+  /**
+   * برچسب سطح سلسله‌مراتب
+   */
+  get hierarchyLevelLabel(): string {
+    switch (this.hierarchyLevel) {
+      case 1:
+        return 'هدف سالانه (استراتژیک)';
+      case 2:
+        return 'هدف فصلی (مرحله‌ای)';
+      case 3:
+        return 'هدف ماهانه (تاکتیکی)';
+    }
+  }
+
+  /**
+   * محاسبه مدت زمان واقعی یا جاری هدف به روز
    */
   get durationInDays(): number {
     const startStr = this.actualStartDate || this.targetStartDate;
@@ -116,6 +168,27 @@ export class Goal {
     return new Goal({
       ...this,
       metric: this.metric.withCurrentValue(newValue),
+      updatedAt: updatedAtIso
+    });
+  }
+
+  withHierarchy(
+    props: { parentId?: string; hierarchyLevel?: GoalHierarchyLevel; weight?: number },
+    updatedAtIso: string
+  ): Goal {
+    return new Goal({
+      ...this,
+      parentId: props.parentId !== undefined ? props.parentId : this.parentId,
+      hierarchyLevel: props.hierarchyLevel !== undefined ? props.hierarchyLevel : this.hierarchyLevel,
+      weight: props.weight !== undefined ? props.weight : this.weight,
+      updatedAt: updatedAtIso
+    });
+  }
+
+  withDependencies(blockedByGoalIds: readonly string[], updatedAtIso: string): Goal {
+    return new Goal({
+      ...this,
+      blockedByGoalIds,
       updatedAt: updatedAtIso
     });
   }

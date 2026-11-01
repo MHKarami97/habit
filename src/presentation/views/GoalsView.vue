@@ -3,6 +3,8 @@ import { ref, computed, onMounted } from 'vue';
 import { useGoalStore } from '../stores/useGoalStore';
 import { GoalStatus } from '@/domain/value-objects/GoalStatus';
 import GoalCard from '../components/goals/GoalCard.vue';
+import GoalTreeItem from '../components/goals/GoalTreeItem.vue';
+import GoalKanbanBoard from '../components/goals/GoalKanbanBoard.vue';
 import GoalFormModal from '../components/goals/GoalFormModal.vue';
 import AppEmptyState from '../components/common/AppEmptyState.vue';
 import AppButton from '../components/common/AppButton.vue';
@@ -13,8 +15,20 @@ import { usePersianCalendar } from '../composables/usePersianCalendar';
 const goalStore = useGoalStore();
 const { localizeDigits } = usePersianCalendar();
 const isCreateModalOpen = ref(false);
+const selectedParentId = ref<string | undefined>(undefined);
+const viewMode = ref<'grid' | 'tree' | 'kanban'>('grid');
 const sortBy = ref<'deadline' | 'priority' | 'progress'>('deadline');
 const isDismissedAlerts = ref<Record<string, boolean>>({});
+
+const openAddChildModal = (parentId: string) => {
+  selectedParentId.value = parentId;
+  isCreateModalOpen.value = true;
+};
+
+const openCreateRootModal = () => {
+  selectedParentId.value = undefined;
+  isCreateModalOpen.value = true;
+};
 
 onMounted(async () => {
   await goalStore.loadGoals();
@@ -100,69 +114,132 @@ const dismissAlert = (id: string) => {
         />
       </div>
 
-      <AppButton variant="primary" size="md" @click="isCreateModalOpen = true">
-        <AppIcon name="plus" size="18" />
-        هدف جدید
-      </AppButton>
-    </div>
+      <div class="actions-right-group">
+        <!-- دکمه تغییر حالت نما: کارتی یا درختی -->
+        <div class="view-mode-toggle">
+          <button
+            type="button"
+            :class="['view-toggle-btn', { 'view-toggle-active': viewMode === 'grid' }]"
+            title="نمای کارتی"
+            @click="viewMode = 'grid'"
+          >
+            نمای کارتی
+          </button>
+          <button
+            type="button"
+            :class="['view-toggle-btn', { 'view-toggle-active': viewMode === 'tree' }]"
+            title="نمای درختی (سلسله‌مراتب)"
+            @click="viewMode = 'tree'"
+          >
+            نمای درختی
+          </button>
+          <button
+            type="button"
+            :class="['view-toggle-btn', { 'view-toggle-active': viewMode === 'kanban' }]"
+            title="نمای کانبان (تخته وضعیت‌ها)"
+            @click="viewMode = 'kanban'"
+          >
+            نمای کانبان
+          </button>
+        </div>
 
-    <!-- فیلتر و مرتب‌سازی -->
-    <div class="controls-row">
-      <!-- تب‌های فیلتر وضعیت -->
-      <div class="filter-tabs-row">
-        <button
-          v-for="tab in filterTabs"
-          :key="tab.key"
-          type="button"
-          :class="['filter-tab-pill', { 'pill-active': goalStore.statusFilter === tab.key }]"
-          @click="goalStore.statusFilter = tab.key"
-        >
-          {{ tab.label }}
-        </button>
-      </div>
-
-      <!-- انتخاب‌گر مرتب‌سازی -->
-      <div class="sort-selector-wrapper">
-        <label class="sort-label">مرتب‌سازی:</label>
-        <select v-model="sortBy" class="sort-select">
-          <option value="deadline">مهلت پایانی</option>
-          <option value="priority">اولویت</option>
-          <option value="progress">درصد پیشرفت</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- لیست اهداف فیلترشده با رندر بهینه و پنجره مجازی -->
-    <div v-if="visibleGoals.length > 0" class="goals-list-grid">
-      <GoalCard
-        v-for="goal in visibleGoals"
-        :key="goal.id"
-        :goal="goal"
-      />
-    </div>
-
-    <!-- دکمه بارگذاری موارد بیشتر برای بارهای سنگین -->
-    <div v-if="hasMoreGoals" class="load-more-row">
-      <AppButton variant="secondary" size="sm" @click="loadMoreGoals">
-        نمایش موارد بیشتر (نمایش {{ localizeDigits(visibleGoals.length) }} از {{ localizeDigits(totalGoalsCount) }})
-      </AppButton>
-    </div>
-
-    <!-- حالت خالی -->
-    <AppEmptyState
-      v-else
-      title="هدفی با این مشخصات یافت نشد"
-      description="می‌توانید فیلتر وضعیت را تغییر دهید یا یک هدف جدید تعریف نمایید."
-    >
-      <template #action>
-        <AppButton variant="primary" size="md" @click="isCreateModalOpen = true">
-          تعریف هدف جدید
+        <AppButton variant="primary" size="md" @click="openCreateRootModal">
+          <AppIcon name="plus" size="18" />
+          هدف جدید
         </AppButton>
-      </template>
-    </AppEmptyState>
+      </div>
+    </div>
+
+    <!-- نمای کارتی سنتی همراه با فیلترها و مرتب‌سازی -->
+    <template v-if="viewMode === 'grid'">
+      <!-- فیلتر و مرتب‌سازی -->
+      <div class="controls-row">
+        <!-- تب‌های فیلتر وضعیت -->
+        <div class="filter-tabs-row">
+          <button
+            v-for="tab in filterTabs"
+            :key="tab.key"
+            type="button"
+            :class="['filter-tab-pill', { 'pill-active': goalStore.statusFilter === tab.key }]"
+            @click="goalStore.statusFilter = tab.key"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
+
+        <!-- انتخاب‌گر مرتب‌سازی -->
+        <div class="sort-selector-wrapper">
+          <label class="sort-label">مرتب‌سازی:</label>
+          <select v-model="sortBy" class="sort-select">
+            <option value="deadline">مهلت پایانی</option>
+            <option value="priority">اولویت</option>
+            <option value="progress">درصد پیشرفت</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- لیست اهداف فیلترشده با رندر بهینه و پنجره مجازی -->
+      <div v-if="visibleGoals.length > 0" class="goals-list-grid">
+        <GoalCard
+          v-for="goal in visibleGoals"
+          :key="goal.id"
+          :goal="goal"
+        />
+      </div>
+
+      <!-- دکمه بارگذاری موارد بیشتر برای بارهای سنگین -->
+      <div v-if="hasMoreGoals" class="load-more-row">
+        <AppButton variant="secondary" size="sm" @click="loadMoreGoals">
+          نمایش موارد بیشتر (نمایش {{ localizeDigits(visibleGoals.length) }} از {{ localizeDigits(totalGoalsCount) }})
+        </AppButton>
+      </div>
+
+      <!-- حالت خالی -->
+      <AppEmptyState
+        v-else
+        title="هدفی با این مشخصات یافت نشد"
+        description="می‌توانید فیلتر وضعیت را تغییر دهید یا یک هدف جدید تعریف نمایید."
+      >
+        <template #action>
+          <AppButton variant="primary" size="md" @click="openCreateRootModal">
+            تعریف هدف جدید
+          </AppButton>
+        </template>
+      </AppEmptyState>
+    </template>
+
+    <!-- نمای درختی سلسله‌مراتب اهداف (سالانه ← فصلی ← ماهانه) -->
+    <template v-else-if="viewMode === 'tree'">
+      <div v-if="goalStore.goalTree.length > 0" class="goals-tree-view">
+        <GoalTreeItem
+          v-for="rootNode in goalStore.goalTree"
+          :key="rootNode.goal.id"
+          :node="rootNode"
+          @add-child="openAddChildModal"
+        />
+      </div>
+
+      <AppEmptyState
+        v-else
+        title="ساختار درختی اهداف خالی است"
+        description="اهداف خود را به صورت سلسله‌مراتب (سالانه، فصلی، ماهانه) سازماندهی کنید."
+      >
+        <template #action>
+          <AppButton variant="primary" size="md" @click="openCreateRootModal">
+            تعریف هدف جدید
+          </AppButton>
+        </template>
+      </AppEmptyState>
+    </template>
+
+    <!-- نمای کانبان بر اساس وضعیت هدف (تخته وضعیت‌ها) -->
+    <template v-else-if="viewMode === 'kanban'">
+      <GoalKanbanBoard />
+    </template>
 
     <GoalFormModal
       :is-open="isCreateModalOpen"
+      :initial-parent-id="selectedParentId"
       @close="isCreateModalOpen = false"
     />
   </div>
@@ -253,6 +330,45 @@ const dismissAlert = (id: string) => {
   display: flex;
   gap: var(--spacing-sm);
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.actions-right-group {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.view-mode-toggle {
+  display: flex;
+  background-color: var(--color-bg-surface-soft);
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 2px;
+  gap: 2px;
+}
+
+.view-toggle-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  background: transparent;
+  transition: all var(--transition-fast);
+}
+
+.view-toggle-active {
+  background-color: var(--color-bg-surface);
+  color: var(--color-accent);
+  box-shadow: var(--shadow-xs);
+  font-weight: 700;
+}
+
+.goals-tree-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
 }
 
 .search-input-wrapper {

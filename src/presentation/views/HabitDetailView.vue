@@ -4,6 +4,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router';
 import { useHabitStore } from '../stores/useHabitStore';
 import { useGoalStore } from '../stores/useGoalStore';
 import { useReminderStore } from '../stores/useReminderStore';
+import { useTemplateStore } from '../stores/useTemplateStore';
 import { usePersianCalendar } from '../composables/usePersianCalendar';
 import { SolarDateMath, SOLAR_MONTH_NAMES } from '@/infrastructure/calendar/SolarDateMath';
 import { getHabitTypeLabel } from '@/domain/value-objects/HabitType';
@@ -17,6 +18,8 @@ const router = useRouter();
 const habitStore = useHabitStore();
 const goalStore = useGoalStore();
 const reminderStore = useReminderStore();
+const templateStore = useTemplateStore();
+const saveTemplateSuccess = ref(false);
 const { effectiveTodayIso, localizeDigits, formatShortDate } = usePersianCalendar();
 
 const habitId = computed(() => String(route.params.id));
@@ -108,6 +111,15 @@ const handleExportIcs = async () => {
   }
 };
 
+const handleSaveAsTemplate = async () => {
+  if (!habit.value) return;
+  await templateStore.saveHabitAsTemplate(habit.value);
+  saveTemplateSuccess.value = true;
+  setTimeout(() => {
+    saveTemplateSuccess.value = false;
+  }, 2500);
+};
+
 const handleDelete = async () => {
   if (!habit.value) return;
   if (confirm(`آیا از حذف عادت «${habit.value.title}» و تاریخچه آن مطمئن هستید؟`)) {
@@ -130,6 +142,10 @@ const handleDelete = async () => {
         <AppButton variant="outline" size="sm" @click="handleExportIcs">
           <AppIcon name="clock" size="16" />
           تقویم گوشی (.ics)
+        </AppButton>
+        <AppButton variant="secondary" size="sm" @click="handleSaveAsTemplate">
+          <AppIcon name="settings" size="16" />
+          {{ saveTemplateSuccess ? 'قالب ذخیره شد!' : 'ذخیره به عنوان قالب' }}
         </AppButton>
         <AppButton variant="secondary" size="sm" @click="isBackfillModalOpen = true">
           <AppIcon name="calendar" size="16" />
