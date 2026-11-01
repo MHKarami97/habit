@@ -22,7 +22,7 @@ const settingsStore = useSettingsStore();
 const appLockStore = useAppLockStore();
 const { applyTheme } = useTheme();
 const { initI18n } = useI18n();
-const { isInstalled, needRefresh, promptInstall, isIos } = usePwa();
+const { isInstalled, needRefresh, updateServiceWorker, promptInstall, isIos } = usePwa();
 
 const isIosModalOpen = ref(false);
 const dbHealthReport = ref<DatabaseHealthReport | null>(null);
@@ -48,8 +48,13 @@ const handleInstallClick = async () => {
   }
 };
 
-const reloadApp = () => {
-  window.location.reload();
+const handleUpdateApp = async () => {
+  try {
+    await updateServiceWorker();
+  } catch (error) {
+    console.error('خطا در اعمال نسخه جدید PWA:', error);
+    window.location.reload();
+  }
 };
 </script>
 
@@ -99,7 +104,7 @@ const reloadApp = () => {
     <!-- نوتیفیکیشن به‌روزرسانی نسخه جدید PWA -->
     <PwaUpdateToast
       :need-refresh="needRefresh"
-      @update="reloadApp"
+      @update="handleUpdateApp"
       @close="needRefresh = false"
     />
 
