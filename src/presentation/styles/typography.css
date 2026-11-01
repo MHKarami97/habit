@@ -1,0 +1,45 @@
+/**
+ * مقیاس تایپوگرافی سلسله‌مراتبی وزیرمتن
+ */
+.text-display {
+  font-size: var(--font-size-2xl);
+  font-weight: 800;
+  line-height: var(--line-height-tight);
+  letter-spacing: -0.02em;
+}
+
+.text-title-1 {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  line-height: var(--line-height-tight);
+}
+
+.text-title-2 {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.text-title-3 {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.text-body {
+  font-size: var(--font-size-base);
+  font-weight: 400;
+  line-height: var(--line-height-base);
+}
+
+.text-body-sm {
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.text-caption {
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  line-height: 1.4;
+}

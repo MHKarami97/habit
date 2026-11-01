@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>کاوش | مدیریت اهداف و ردیابی عادت</title>
+    <meta name="description" content="سامانه بومی، آفلاین و محلی مدیریت اهداف و ردیابی عادت‌ها برای فارسی‌زبانان" />
+    <meta name="theme-color" content="#FAF7F2" />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/icons/launchericon-192x192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- بارگذاری زودهنگام فونت‌های محلی بدون درخواست به CDN خارجی -->
+    <link rel="stylesheet" href="/fonts/Vazirmatn-font-face.css" />
+
+    <!-- اسکریپت درون‌خطی و زودهنگام اعمال تم بدون هیچ فلش سفیدی -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('kavosh_theme');
+          var theme = saved || 'system';
+          var isDark = false;
+          if (theme === 'dark') {
+            isDark = true;
+          } else if (theme === 'system' || !theme) {
+            isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          }
+          var resolvedTheme = isDark ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-theme', resolvedTheme);
+          var metaTheme = document.querySelector('meta[name="theme-color"]');
+          if (metaTheme) {
+            metaTheme.setAttribute('content', isDark ? '#181513' : '#FAF7F2');
+          }
+        } catch (e) {
+          // در صورت بروز خطای دسترسی به localStorage در حالت incognito
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,78 @@
+/**
+ * استایل‌های پایه، ریست و رفتار کلی سند در حالت راست‌به‌چپ (RTL)
+ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  direction: rtl;
+  text-align: right;
+  font-family: var(--font-family-base);
+  font-size: 16px;
+  line-height: var(--line-height-base);
+  background-color: var(--color-bg-app);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* اسکرول‌بار شیک و محو */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: var(--radius-full);
+}
+
+/* عناصر تعاملی */
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  outline: none;
+}
+
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* محدودیت حداقل هدف لمسی برای ارگونومی موبایل */
+.touch-target {
+  min-height: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
