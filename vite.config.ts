@@ -9,7 +9,6 @@ export default defineConfig({
     VitePWA({
       registerType: 'prompt',
       includeAssets: [
-        'favicon.ico',
         'fonts/Vazirmatn-font-face.css',
         'fonts/webfonts/*.woff2',
         'icons/*.png',
