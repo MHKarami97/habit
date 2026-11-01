@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
@@ -5,6 +6,17 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig({
     plugins: [
         vue(),
+        {
+            name: 'copy-404-html',
+            closeBundle: function () {
+                var indexPath = fileURLToPath(new URL('./dist/index.html', import.meta.url));
+                var notFoundPath = fileURLToPath(new URL('./dist/404.html', import.meta.url));
+                if (fs.existsSync(indexPath)) {
+                    fs.copyFileSync(indexPath, notFoundPath);
+                    console.log('[copy-404-html] Generated dist/404.html for GitHub Pages SPA support');
+                }
+            }
+        },
         VitePWA({
             registerType: 'prompt',
             includeAssets: [

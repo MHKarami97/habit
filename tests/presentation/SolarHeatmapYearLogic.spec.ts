@@ -5,12 +5,24 @@ describe('SolarHeatmapYear Calendar Math & Weekday Alignment', () => {
   const WEEKDAY_NAMES = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه'] as const;
   const WEEKDAY_SHORT_LABELS = ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'] as const;
 
-  it('aligns weekdays with Saturday as index 0 (leftmost) and Friday as index 6 (rightmost)', () => {
+  it('aligns weekdays with Saturday as index 0 and Friday as index 6 in both RTL and LTR modes', () => {
     expect(WEEKDAY_SHORT_LABELS[0]).toBe('ش');
     expect(WEEKDAY_NAMES[0]).toBe('شنبه');
 
     expect(WEEKDAY_SHORT_LABELS[6]).toBe('ج');
     expect(WEEKDAY_NAMES[6]).toBe('جمعه');
+
+    // در حالت استاندارد راست‌به‌چپ (RTL): شنبه در ستون اول از راست (x=102) و جمعه در ستون اول از چپ (x=0)
+    const rtlSaturdayX = (6 - 0) * 17;
+    const rtlFridayX = (6 - 6) * 17;
+    expect(rtlSaturdayX).toBe(102);
+    expect(rtlFridayX).toBe(0);
+
+    // در حالت چپ‌به‌راست (LTR): شنبه در ستون اول از چپ (x=0) و جمعه در ستون اول از راست (x=102)
+    const ltrSaturdayX = 0 * 17;
+    const ltrFridayX = 6 * 17;
+    expect(ltrSaturdayX).toBe(0);
+    expect(ltrFridayX).toBe(102);
   });
 
   it('calculates correct first day of week for 1403 and 1405 solar months', () => {

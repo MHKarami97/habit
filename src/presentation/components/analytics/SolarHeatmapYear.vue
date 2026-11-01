@@ -23,6 +23,20 @@ const currentSolar = computed(() => {
 
 const selectedYear = ref<number>(props.initialYear || currentSolar.value.year);
 
+// وضعیت چیدمان جهت تقویم: پیش‌فرض راست‌به‌چپ (استاندارد تقویم شمسی با شروع از شنبه در سمت راست)
+const isRtlLayout = ref<boolean>(
+  typeof localStorage !== 'undefined'
+    ? localStorage.getItem('solar_heatmap_rtl') !== 'false'
+    : true
+);
+
+const toggleLayoutDirection = () => {
+  isRtlLayout.value = !isRtlLayout.value;
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('solar_heatmap_rtl', String(isRtlLayout.value));
+  }
+};
+
 const isLeapYear = computed(() => {
   return SolarDateMath.isSolarLeap(selectedYear.value);
 });
@@ -184,29 +198,42 @@ const handleCellLeave = () => {
         </span>
       </div>
 
-      <!-- انتخاب سال شمسی -->
-      <div class="year-selector">
+      <!-- کنترل‌های هدر: تغییر جهت چیدمان هفته و انتخاب سال -->
+      <div class="header-controls">
         <button
           type="button"
-          class="year-nav-btn touch-target"
-          title="سال قبل"
-          @click="selectedYear--"
+          class="dir-toggle-btn touch-target"
+          :title="isRtlLayout ? 'تغییر به چیدمان چپ‌به‌راست (ش در ستون اول از چپ)' : 'تغییر به چیدمان استاندارد تقویم شمسی (ش در ستون اول از راست)'"
+          @click="toggleLayoutDirection"
         >
-          <AppIcon name="chevron-right" size="16" />
+          <AppIcon name="refresh" size="13" />
+          <span>{{ isRtlLayout ? 'چیدمان: راست‌به‌چپ (ش ← ج)' : 'چیدمان: چپ‌به‌راست (ش → ج)' }}</span>
         </button>
-        <span class="current-year-badge">
-          سال {{ localizeDigits(selectedYear) }}
-          <span v-if="isLeapYear" class="leap-tag">(کبیسه)</span>
-        </span>
-        <button
-          type="button"
-          class="year-nav-btn touch-target"
-          title="سال بعد"
-          :disabled="selectedYear >= currentSolar.year"
-          @click="selectedYear++"
-        >
-          <AppIcon name="chevron-left" size="16" />
-        </button>
+
+        <!-- انتخاب سال شمسی -->
+        <div class="year-selector">
+          <button
+            type="button"
+            class="year-nav-btn touch-target"
+            title="سال قبل"
+            @click="selectedYear--"
+          >
+            <AppIcon name="chevron-right" size="16" />
+          </button>
+          <span class="current-year-badge">
+            سال {{ localizeDigits(selectedYear) }}
+            <span v-if="isLeapYear" class="leap-tag">(کبیسه)</span>
+          </span>
+          <button
+            type="button"
+            class="year-nav-btn touch-target"
+            title="سال بعد"
+            :disabled="selectedYear >= currentSolar.year"
+            @click="selectedYear++"
+          >
+            <AppIcon name="chevron-left" size="16" />
+          </button>
+        </div>
       </div>
     </header>
 
@@ -239,16 +266,25 @@ const handleCellLeave = () => {
             <span class="month-days-count">{{ localizeDigits(month.daysInMonth) }} روز</span>
           </div>
 
-          <!-- مینی تقویم SVG برای این ماه (چیدمان استاندارد تقویم از چپ به راست: شنبه تا جمعه) -->
+          <!-- مینی تقویم SVG برای این ماه (چیدمان استاندارد تقویم شمسی از راست به چپ یا مدرن چپ به راست) -->
           <svg
             class="month-svg"
             viewBox="0 0 119 110"
             role="img"
             :aria-label="`نقشه فعالیت ماه ${month.monthName}`"
-            style="direction: ltr;"
           >
-            <!-- ردیف عنوان روزهای هفته: شنبه (ستون اول از چپ) تا جمعه (ستون آخر) -->
-            <g class="weekday-labels" font-size="7" fill="var(--color-text-muted)" text-anchor="middle" style="direction: ltr;">
+            <!-- ردیف عنوان روزهای هفته: چیدمان استاندارد راست‌به‌چپ (ش در راست، ج در چپ) -->
+            <g v-if="isRtlLayout" class="weekday-labels" font-size="7" fill="var(--color-text-muted)" text-anchor="middle">
+              <text x="110" y="9">ش</text>
+              <text x="93" y="9">ی</text>
+              <text x="76" y="9">د</text>
+              <text x="59" y="9">س</text>
+              <text x="42" y="9">چ</text>
+              <text x="25" y="9">پ</text>
+              <text x="8" y="9">ج</text>
+            </g>
+            <!-- ردیف عنوان روزهای هفته: چیدمان چپ‌به‌راست (ش در چپ، ج در راست) -->
+            <g v-else class="weekday-labels" font-size="7" fill="var(--color-text-muted)" text-anchor="middle" style="direction: ltr;">
               <text x="8" y="9">ش</text>
               <text x="25" y="9">ی</text>
               <text x="42" y="9">د</text>
@@ -263,7 +299,7 @@ const handleCellLeave = () => {
               <rect
                 v-for="d in month.days"
                 :key="d.dayNum"
-                :x="d.col * 17"
+                :x="(isRtlLayout ? (6 - d.col) : d.col) * 17"
                 :y="d.row * 15"
                 width="14"
                 height="12"
@@ -340,6 +376,34 @@ const handleCellLeave = () => {
 .heatmap-subtitle {
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
+.dir-toggle-btn {
+  background-color: var(--color-bg-surface-soft);
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all var(--transition-fast);
+}
+
+.dir-toggle-btn:hover {
+  background-color: var(--color-bg-surface);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 .year-selector {

@@ -510,7 +510,6 @@ const handleDelete = async () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  direction: ltr;
 }
 
 .heatmap-weekday-headers {
@@ -522,14 +521,12 @@ const handleDelete = async () => {
   color: var(--color-text-muted);
   border-bottom: var(--border-width-hairline) solid var(--color-border-subtle);
   padding-bottom: 4px;
-  direction: ltr;
 }
 
 .heatmap-cells-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 6px;
-  direction: ltr;
 }
 
 .empty-cell {
