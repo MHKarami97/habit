@@ -20,7 +20,7 @@ const goalStore = useGoalStore();
 const reminderStore = useReminderStore();
 const templateStore = useTemplateStore();
 const saveTemplateSuccess = ref(false);
-const { effectiveTodayIso, localizeDigits, formatShortDate } = usePersianCalendar();
+const { effectiveTodayIso, localizeDigits, formatDate } = usePersianCalendar();
 
 const habitId = computed(() => String(route.params.id));
 const habit = computed(() => habitStore.habits.find(h => h.id === habitId.value));
@@ -264,7 +264,7 @@ const handleDelete = async () => {
                 'cell-empty': !day.isCompleted && !day.isFrozen
               }
             ]"
-            :title="`${formatShortDate(day.isoDate)}: ${day.isCompleted ? 'تکمیل شد' : (day.isFrozen ? 'روز فریز' : 'انجام‌نشده')}`"
+            :title="`${formatDate(day.isoDate, { includeWeekday: true })}: ${day.isCompleted ? 'تکمیل شد' : (day.isFrozen ? 'روز فریز' : 'انجام‌نشده')}`"
           >
             {{ localizeDigits(day.dayNumber) }}
           </div>
@@ -510,6 +510,7 @@ const handleDelete = async () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  direction: ltr;
 }
 
 .heatmap-weekday-headers {
@@ -521,12 +522,14 @@ const handleDelete = async () => {
   color: var(--color-text-muted);
   border-bottom: var(--border-width-hairline) solid var(--color-border-subtle);
   padding-bottom: 4px;
+  direction: ltr;
 }
 
 .heatmap-cells-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 6px;
+  direction: ltr;
 }
 
 .empty-cell {
@@ -541,11 +544,12 @@ const handleDelete = async () => {
   justify-content: center;
   font-size: var(--font-size-xs);
   font-weight: 600;
-  transition: transform var(--transition-fast);
+  transition: filter var(--transition-fast), outline var(--transition-fast);
 }
 
 .day-cell:hover {
-  transform: scale(1.1);
+  outline: 2px solid var(--color-accent);
+  filter: brightness(1.15);
 }
 
 .cell-done {

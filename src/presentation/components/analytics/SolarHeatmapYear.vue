@@ -54,16 +54,19 @@ const monthsData = computed(() => {
     const firstDayDate = new Date(firstDayG.year, firstDayG.month - 1, firstDayG.day);
     const firstDayOfWeek = (firstDayDate.getDay() + 1) % 7;
 
+    const WEEKDAY_NAMES = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه'] as const;
+
     const days = [];
     for (let dayNum = 1; dayNum <= daysInMonth; dayNum++) {
       const g = SolarDateMath.solarToGregorian(year, monthNum, dayNum);
       const dateIso = `${g.year}-${pad(g.month)}-${pad(g.day)}`;
       const completedCount = dailyCompletionCountMap.value.get(dateIso) || 0;
 
-      // محاسبه مختصات در تقویم کوچک ماه (۷ ستون x تا ۶ سطر)
+      // محاسبه مختصات در تقویم کوچک ماه (۷ ستون x تا ۶ سطر: شنبه=۰ در ستون اول از چپ تا جمعه=۶)
       const cellIndex = firstDayOfWeek + dayNum - 1;
       const col = cellIndex % 7;
       const row = Math.floor(cellIndex / 7);
+      const weekdayName = WEEKDAY_NAMES[col] ?? '';
 
       // محاسبه سطح رنگی پیوسته (۰ تا ۴)
       let level = 0;
@@ -75,7 +78,8 @@ const monthsData = computed(() => {
       days.push({
         dayNum,
         dateIso,
-        solarFormatted: `${dayNum} ${monthName} ${year}`,
+        weekdayName,
+        solarFormatted: `${weekdayName}، ${localizeDigits(dayNum)} ${monthName} ${localizeDigits(year)}`,
         completedCount,
         level,
         col,
@@ -128,6 +132,8 @@ const tooltip = ref<{
   count: number;
 } | null>(null);
 
+let rafHoverId: number | null = null;
+
 const handleCellHover = (
   event: MouseEvent | TouchEvent,
   day: { solarFormatted: string; completedCount: number }
@@ -143,16 +149,27 @@ const handleCellHover = (
     clientY = event.clientY;
   }
 
-  tooltip.value = {
-    visible: true,
-    x: clientX,
-    y: clientY - 45,
-    title: day.solarFormatted,
-    count: day.completedCount
-  };
+  if (rafHoverId !== null) {
+    cancelAnimationFrame(rafHoverId);
+  }
+
+  rafHoverId = requestAnimationFrame(() => {
+    tooltip.value = {
+      visible: true,
+      x: clientX,
+      y: clientY - 14,
+      title: day.solarFormatted,
+      count: day.completedCount
+    };
+    rafHoverId = null;
+  });
 };
 
 const handleCellLeave = () => {
+  if (rafHoverId !== null) {
+    cancelAnimationFrame(rafHoverId);
+    rafHoverId = null;
+  }
   tooltip.value = null;
 };
 </script>
@@ -222,15 +239,16 @@ const handleCellLeave = () => {
             <span class="month-days-count">{{ localizeDigits(month.daysInMonth) }} روز</span>
           </div>
 
-          <!-- مینی تقویم SVG برای این ماه -->
+          <!-- مینی تقویم SVG برای این ماه (چیدمان استاندارد تقویم از چپ به راست: شنبه تا جمعه) -->
           <svg
             class="month-svg"
             viewBox="0 0 119 110"
             role="img"
             :aria-label="`نقشه فعالیت ماه ${month.monthName}`"
+            style="direction: ltr;"
           >
-            <!-- ردیف عنوان روزهای هفته: شنبه تا جمعه -->
-            <g class="weekday-labels" font-size="7" fill="var(--color-text-muted)" text-anchor="middle">
+            <!-- ردیف عنوان روزهای هفته: شنبه (ستون اول از چپ) تا جمعه (ستون آخر) -->
+            <g class="weekday-labels" font-size="7" fill="var(--color-text-muted)" text-anchor="middle" style="direction: ltr;">
               <text x="8" y="9">ش</text>
               <text x="25" y="9">ی</text>
               <text x="42" y="9">د</text>
@@ -252,6 +270,7 @@ const handleCellLeave = () => {
                 rx="2.5"
                 :class="['day-rect', `level-${d.level}`]"
                 @mouseenter="handleCellHover($event, d)"
+                @mousemove="handleCellHover($event, d)"
                 @mouseleave="handleCellLeave"
                 @touchstart.passive="handleCellHover($event, d)"
               />
@@ -462,20 +481,21 @@ const handleCellLeave = () => {
   width: 100%;
   height: auto;
   display: block;
+  direction: ltr;
 }
 
 .day-rect {
   stroke: var(--color-border-subtle);
   stroke-width: 0.5px;
   cursor: pointer;
-  transition: transform var(--transition-fast), filter var(--transition-fast);
+  transition: stroke var(--transition-fast), filter var(--transition-fast);
+  outline: none;
 }
 
 .day-rect:hover {
-  transform: scale(1.15);
-  transform-origin: center;
-  stroke: var(--color-text-primary);
-  stroke-width: 1px;
+  stroke: var(--color-accent);
+  stroke-width: 1.5px;
+  filter: brightness(1.2);
 }
 
 /* مقیاس رنگی پیوسته فعالیت */
@@ -540,13 +560,15 @@ const handleCellLeave = () => {
   transform: translate(-50%, -100%);
   background-color: var(--color-text-primary);
   color: var(--color-bg-surface);
-  padding: 4px 8px;
+  padding: 6px 10px;
   border-radius: var(--radius-sm);
   font-size: 11px;
-  pointer-events: none;
+  pointer-events: none !important;
+  user-select: none;
   z-index: 1000;
   box-shadow: var(--shadow-md);
   white-space: nowrap;
+  margin-top: -10px;
 }
 
 .tooltip-title {
