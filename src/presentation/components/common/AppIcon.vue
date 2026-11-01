@@ -25,7 +25,8 @@ defineProps<{
     | 'snowflake'
     | 'refresh'
     | 'shield'
-    | 'share';
+    | 'share'
+    | 'clock';
   size?: number | string;
 }>();
 </script>
@@ -139,6 +140,11 @@ defineProps<{
       <circle cx="18" cy="19" r="3" />
       <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
       <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    </g>
+    <!-- clock -->
+    <g v-else-if="name === 'clock'">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
     </g>
   </svg>
 </template>

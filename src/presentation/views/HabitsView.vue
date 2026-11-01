@@ -9,13 +9,21 @@ import BackfillModal from '../components/habits/BackfillModal.vue';
 import AppEmptyState from '../components/common/AppEmptyState.vue';
 import AppButton from '../components/common/AppButton.vue';
 import AppIcon from '../components/common/AppIcon.vue';
+import { useVirtualWindow } from '../composables/useVirtualWindow';
 
 const habitStore = useHabitStore();
-const { effectiveTodayIso } = usePersianCalendar();
+const { effectiveTodayIso, localizeDigits } = usePersianCalendar();
 
 const isCreateModalOpen = ref(false);
 const isBackfillModalOpen = ref(false);
 const selectedHabitForBackfill = ref<Habit | null>(null);
+
+const {
+  visibleItems: visibleHabits,
+  hasMore: hasMoreHabits,
+  loadMore: loadMoreHabits,
+  totalCount: totalHabitsCount
+} = useVirtualWindow(() => habitStore.habits, { pageSize: 24 });
 
 onMounted(async () => {
   await Promise.all([
@@ -44,8 +52,8 @@ const openBackfill = (habit: Habit) => {
       </AppButton>
     </div>
 
-    <div v-if="habitStore.habits.length > 0" class="habits-cards-list">
-      <div v-for="habit in habitStore.habits" :key="habit.id" class="habit-item-wrapper">
+    <div v-if="visibleHabits.length > 0" class="habits-cards-list">
+      <div v-for="habit in visibleHabits" :key="habit.id" class="habit-item-wrapper">
         <HabitCard :habit="habit" />
         <div class="habit-item-secondary-bar">
           <button
@@ -66,6 +74,13 @@ const openBackfill = (habit: Habit) => {
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- دکمه بارگذاری موارد بیشتر برای لیست‌های بزرگ -->
+    <div v-if="hasMoreHabits" class="load-more-row">
+      <AppButton variant="secondary" size="sm" @click="loadMoreHabits">
+        نمایش عادات بیشتر (نمایش {{ localizeDigits(visibleHabits.length) }} از {{ localizeDigits(totalHabitsCount) }})
+      </AppButton>
     </div>
 
     <AppEmptyState
@@ -153,5 +168,11 @@ const openBackfill = (habit: Habit) => {
 }
 .pause-toggle-btn:hover {
   color: var(--color-text-secondary);
+}
+
+.load-more-row {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--spacing-md);
 }
 </style>

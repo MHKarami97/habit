@@ -24,6 +24,11 @@ export const router = createRouter({
       component: () => import('../views/HabitsView.vue')
     },
     {
+      path: '/habits/:id',
+      name: 'habit-detail',
+      component: () => import('../views/HabitDetailView.vue')
+    },
+    {
       path: '/analytics',
       name: 'analytics',
       component: () => import('../views/AnalyticsView.vue')
@@ -32,6 +37,11 @@ export const router = createRouter({
       path: '/settings',
       name: 'settings',
       component: () => import('../views/SettingsView.vue')
+    },
+    {
+      path: '/guide',
+      name: 'guide',
+      component: () => import('../views/GuideView.vue')
     },
     {
       path: '/:pathMatch(.*)*',

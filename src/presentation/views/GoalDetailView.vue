@@ -2,11 +2,13 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useGoalStore } from '../stores/useGoalStore';
+import { useReminderStore } from '../stores/useReminderStore';
 import { usePersianCalendar } from '../composables/usePersianCalendar';
 import { GoalStatus, getGoalStatusLabel } from '@/domain/value-objects/GoalStatus';
 import { GoalStateMachine } from '@/domain/state-machine/GoalStateMachine';
 import { Milestone } from '@/domain/entities/Milestone';
 import { getObstacleCategoryLabel } from '@/domain/entities/ObstacleLog';
+import { db } from '@/infrastructure/db/AppDatabase';
 import AppButton from '../components/common/AppButton.vue';
 import AppProgressBar from '../components/common/AppProgressBar.vue';
 import AppIcon from '../components/common/AppIcon.vue';
@@ -16,6 +18,7 @@ import ObstacleLogModal from '../components/goals/ObstacleLogModal.vue';
 const route = useRoute();
 const router = useRouter();
 const goalStore = useGoalStore();
+const reminderStore = useReminderStore();
 const { formatShortDate, localizeDigits } = usePersianCalendar();
 
 const goalId = computed(() => String(route.params.id));
@@ -60,6 +63,14 @@ const handleAddMilestone = async () => {
   newMilestoneTitle.value = '';
 };
 
+const handleExportDeadlineIcs = async () => {
+  if (!goal.value) return;
+  const goalRecord = await db.goals.get(goal.value.id);
+  if (goalRecord) {
+    reminderStore.downloadGoalDeadlineIcs(goalRecord);
+  }
+};
+
 const handleDuplicate = async () => {
   if (!goal.value) return;
   const dup = await goalStore.duplicateGoal(goal.value.id);
@@ -85,6 +96,10 @@ const handleDelete = async () => {
       </RouterLink>
 
       <div class="header-actions">
+        <AppButton variant="outline" size="sm" @click="handleExportDeadlineIcs">
+          <AppIcon name="clock" size="16" />
+          تقویم مهلت (.ics)
+        </AppButton>
         <AppButton variant="secondary" size="sm" @click="handleDuplicate">
           تکثیر هدف
         </AppButton>

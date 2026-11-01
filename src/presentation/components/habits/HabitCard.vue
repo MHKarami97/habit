@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { Habit } from '@/domain/entities/Habit';
 import { useHabitStore } from '../../stores/useHabitStore';
 import { usePersianCalendar } from '../../composables/usePersianCalendar';
@@ -9,7 +10,7 @@ const props = defineProps<{
   habit: Habit;
 }>();
 
-
+const router = useRouter();
 const habitStore = useHabitStore();
 const { effectiveTodayIso, localizeDigits } = usePersianCalendar();
 
@@ -29,6 +30,10 @@ const streakAnalysis = computed(() => {
   return habitStore.getStreakAnalysis(props.habit, effectiveTodayIso.value);
 });
 
+const goToDetail = () => {
+  router.push(`/habits/${props.habit.id}`);
+};
+
 const handleCheckIn = async () => {
   await habitStore.checkIn({
     habitId: props.habit.id,
@@ -43,7 +48,7 @@ const handleToggleFreeze = async () => {
 
 <template>
   <article :class="['habit-card', { 'habit-completed': isCompletedToday, 'habit-frozen': isFrozenToday }]">
-    <div class="habit-main-col">
+    <div class="habit-main-col" role="button" tabindex="0" @click="goToDetail">
       <div class="habit-header-row">
         <h4 class="habit-title">{{ habit.title }}</h4>
         <span v-if="habit.cue" class="habit-cue-badge" title="محرک و لنگر رفتاری">
@@ -130,6 +135,7 @@ const handleToggleFreeze = async () => {
   flex-direction: column;
   gap: var(--spacing-xxs);
   flex: 1;
+  cursor: pointer;
 }
 
 .habit-header-row {

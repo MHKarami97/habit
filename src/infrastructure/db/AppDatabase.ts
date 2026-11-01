@@ -102,6 +102,35 @@ export interface UserSettingsRecord {
   schemaVersion: number;
 }
 
+export interface ReminderLogRecord {
+  id: string;
+  habitId: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:mm
+  firedAt: string; // ISO
+}
+
+export interface PeriodicReviewRecord {
+  id: string;
+  type: 'weekly' | 'monthly';
+  periodKey: string;
+  solarYear: number;
+  solarPeriod: number;
+  periodLabel: string;
+  startDateIso: string;
+  endDateIso: string;
+  whatWorked: string;
+  whatDidntWork: string;
+  primaryObstacle: string;
+  actionPlan: string;
+  adherenceRate: number;
+  completedHabitsCount: number;
+  totalExpectedHabits: number;
+  activeGoalsCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export class AppDatabase extends Dexie {
   goals!: Table<GoalRecord, string>;
   milestones!: Table<MilestoneRecord, string>;
@@ -110,6 +139,8 @@ export class AppDatabase extends Dexie {
   habits!: Table<HabitRecord, string>;
   habitLogs!: Table<HabitLogRecord, string>;
   settings!: Table<UserSettingsRecord, string>;
+  reminderLogs!: Table<ReminderLogRecord, string>;
+  periodicReviews!: Table<PeriodicReviewRecord, string>;
 
   constructor() {
     super('KavoshLocalDB');
@@ -124,6 +155,16 @@ export class AppDatabase extends Dexie {
       // ایندکس ترکیبی [habitId+date] جهت کوئری O(1) رکورد روزانه
       habitLogs: 'id, habitId, date, [habitId+date], isCompleted, isFrozen',
       settings: 'id'
+    });
+
+    // نسخه ۲ (فاز ۲ - بسته ۱): اضافه شدن جدول یادآورهای شلیک‌شده جهت جلوگیری از ارسال تکراری
+    this.version(2).stores({
+      reminderLogs: 'id, habitId, date, [habitId+date+time], firedAt'
+    });
+
+    // نسخه ۳ (فاز ۲ - بسته ۳): اضافه شدن جدول بازبینی‌های دوره‌ای هفتگی و ماهانه
+    this.version(3).stores({
+      periodicReviews: 'id, type, periodKey, [type+periodKey], solarYear, createdAt'
     });
   }
 }

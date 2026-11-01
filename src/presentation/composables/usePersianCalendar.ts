@@ -28,6 +28,10 @@ export function usePersianCalendar() {
     );
   };
 
+  const formatLongDate = (dateOrIso: string | Date) => {
+    return formatDate(dateOrIso, { includeWeekday: true, fullMonthName: true });
+  };
+
   const localizeDigits = (val: string | number) => {
     if (settingsStore.settings.numberFormat === 'latin') {
       return String(val);
@@ -39,6 +43,7 @@ export function usePersianCalendar() {
     effectiveTodayIso,
     formatDate,
     formatShortDate,
+    formatLongDate,
     localizeDigits
   };
 }

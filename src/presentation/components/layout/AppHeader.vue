@@ -22,6 +22,8 @@ const pageTitle = computed(() => {
       return 'عادت‌ها';
     case 'analytics':
       return 'آمار و تحلیل';
+    case 'guide':
+      return 'راهنما و آموزش علمی';
     case 'settings':
       return 'تنظیمات';
     default:

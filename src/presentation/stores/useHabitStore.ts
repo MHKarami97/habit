@@ -8,6 +8,8 @@ import { CreateHabitUseCase, CreateHabitInput } from '@/application/use-cases/ha
 import { CheckInHabitUseCase, CheckInHabitInput } from '@/application/use-cases/habits/CheckInHabitUseCase';
 import { BackfillHabitLogUseCase, BackfillHabitLogInput } from '@/application/use-cases/habits/BackfillHabitLogUseCase';
 import { ToggleFreezeHabitUseCase } from '@/application/use-cases/habits/ToggleFreezeHabitUseCase';
+import { db } from '@/infrastructure/db/AppDatabase';
+import { ReminderCoordinator } from '@/application/reminders/ReminderCoordinator';
 
 export const useHabitStore = defineStore('habits', () => {
   const habits = ref<readonly Habit[]>([]);
@@ -60,6 +62,10 @@ export const useHabitStore = defineStore('habits', () => {
   const createHabit = async (input: CreateHabitInput) => {
     const habit = await createHabitUseCase.execute(input);
     await loadHabits();
+    const habitRecord = await db.habits.get(habit.id);
+    if (habitRecord) {
+      await ReminderCoordinator.getInstance().scheduleHabitReminders(habitRecord);
+    }
     return habit;
   };
 
@@ -67,6 +73,9 @@ export const useHabitStore = defineStore('habits', () => {
     const log = await checkInHabitUseCase.execute(input);
     await loadTodayLogs(input.date);
     await loadLogsForHabit(input.habitId);
+    if (log.isCompleted) {
+      await ReminderCoordinator.getInstance().onHabitCompletedToday(input.habitId, input.date);
+    }
     return log;
   };
 
@@ -88,10 +97,48 @@ export const useHabitStore = defineStore('habits', () => {
     const updated = habit.togglePaused(new Date().toISOString());
     await container.habitRepo.save(updated);
     await loadHabits();
+    const habitRecord = await db.habits.get(habit.id);
+    if (habitRecord) {
+      await ReminderCoordinator.getInstance().scheduleHabitReminders(habitRecord);
+    }
+  };
+
+  const updateHabitReminders = async (habitId: string, reminderTimes: string[]) => {
+    const habit = habits.value.find(h => h.id === habitId);
+    if (!habit) return;
+    const nowIso = new Date().toISOString();
+    const updated = new Habit({
+      id: habit.id,
+      title: habit.title,
+      icon: habit.icon,
+      color: habit.color,
+      categoryId: habit.categoryId,
+      habitType: habit.habitType,
+      recurrence: habit.recurrence,
+      dailyTarget: habit.dailyTarget,
+      unit: habit.unit,
+      cue: habit.cue,
+      linkedGoalId: habit.linkedGoalId,
+      reminderTimes,
+      startDate: habit.startDate,
+      endDate: habit.endDate,
+      isPaused: habit.isPaused,
+      isArchived: habit.isArchived,
+      weeklyFreezeAllowed: habit.weeklyFreezeAllowed,
+      createdAt: habit.createdAt,
+      updatedAt: nowIso
+    });
+    await container.habitRepo.save(updated);
+    await loadHabits();
+    const habitRecord = await db.habits.get(habitId);
+    if (habitRecord) {
+      await ReminderCoordinator.getInstance().scheduleHabitReminders(habitRecord);
+    }
   };
 
   const deleteHabit = async (habitId: string) => {
     await container.habitRepo.delete(habitId);
+    await ReminderCoordinator.getInstance().cancelHabitReminders(habitId);
     await loadHabits();
   };
 
@@ -112,6 +159,7 @@ export const useHabitStore = defineStore('habits', () => {
     backfillLog,
     toggleFreeze,
     togglePause,
+    updateHabitReminders,
     deleteHabit
   };
 });

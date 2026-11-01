@@ -1,24 +1,37 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import { useHabitStore } from '../stores/useHabitStore';
+import { useReminderStore } from '../stores/useReminderStore';
 import { useTheme, ThemeMode } from '../composables/useTheme';
 import { usePersianCalendar } from '../composables/usePersianCalendar';
 import { JsonBackupService } from '@/infrastructure/export/JsonBackupService';
+import { CsvExportService } from '@/infrastructure/export/CsvExportService';
 import { WebCryptoAdapter } from '@/infrastructure/crypto/WebCryptoAdapter';
 import { NotificationService } from '@/infrastructure/notifications/NotificationService';
+import { ReminderCoordinator } from '@/application/reminders/ReminderCoordinator';
+import { IcsExportScheduler } from '@/application/reminders/strategies/IcsExportScheduler';
+import { db } from '@/infrastructure/db/AppDatabase';
+import { usePwa } from '../composables/usePwa';
 import AppButton from '../components/common/AppButton.vue';
 import AppInput from '../components/common/AppInput.vue';
 import AppSelect from '../components/common/AppSelect.vue';
 import AppIcon from '../components/common/AppIcon.vue';
 import AppModal from '../components/common/AppModal.vue';
+import IosInstallModal from '../components/layout/IosInstallModal.vue';
 import OnboardingModal from '../components/onboarding/OnboardingModal.vue';
+import StorageManagerCard from '../components/settings/StorageManagerCard.vue';
 
 const settingsStore = useSettingsStore();
+const habitStore = useHabitStore();
+const reminderStore = useReminderStore();
 const { applyTheme } = useTheme();
 const { localizeDigits, effectiveTodayIso } = usePersianCalendar();
+const { isInstalled, isInstallable, promptInstall, isIos } = usePwa();
 
 const isWipeModalOpen = ref(false);
 const isOnboardingModalOpen = ref(false);
+const isIosInstallModalOpen = ref(false);
 const isImportModalOpen = ref(false);
 const isEncryptModalOpen = ref(false);
 
@@ -81,15 +94,6 @@ const handleEndOfDayChange = (newHour: string) => {
   settingsStore.updateSettings({ endOfDayHour: Number(newHour) });
 };
 
-const handleRequestPersistence = async () => {
-  const granted = await settingsStore.requestPersistentStorage();
-  if (granted) {
-    showToast('ذخیره‌سازی پایدار با موفقیت فعال شد. اطلاعات شما از پاک‌سازی خودکار در امان است.');
-  } else {
-    showToast('مرورگر اجازه ذخیره‌سازی پایدار را صادر نکرد.');
-  }
-};
-
 const handleTestNotification = async () => {
   isTestingNotification.value = true;
   try {
@@ -102,7 +106,41 @@ const handleTestNotification = async () => {
   } finally {
     isTestingNotification.value = false;
     notificationCaps.value = NotificationService.getCapabilities();
+    reminderStore.refreshCapabilities();
   }
+};
+
+const handleDownloadAllHabitsIcs = async () => {
+  await habitStore.loadHabits();
+  const activeHabits = habitStore.habits.filter(h => !h.isArchived && !h.isPaused);
+  if (activeHabits.length === 0) {
+    showToast('عادت فعالی برای صدور تقویم یافت نشد.');
+    return;
+  }
+
+  const lines: string[] = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Kavosh Habit Goal//FA',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH'
+  ];
+
+  for (const habit of activeHabits) {
+    const habitRecord = await db.habits.get(habit.id);
+    if (habitRecord) {
+      const { icsContent } = ReminderCoordinator.getInstance().generateHabitIcs(habitRecord);
+      const eventPart = icsContent.split('BEGIN:VEVENT')[1]?.split('END:VEVENT')[0];
+      if (eventPart) {
+        lines.push('BEGIN:VEVENT' + eventPart + 'END:VEVENT');
+      }
+    }
+  }
+
+  lines.push('END:VCALENDAR');
+  const fullIcs = lines.join('\r\n');
+  IcsExportScheduler.downloadIcsFile('kavosh-all-habits.ics', fullIcs);
+  showToast('فایل تقویم تمام عادات با موفقیت دانلود شد.');
 };
 
 const handleExportJson = async () => {
@@ -128,6 +166,52 @@ const handleExportJson = async () => {
     showToast('فایل پشتیبان با موفقیت دانلود شد.');
   } catch (err: any) {
     showToast(`خطا در صدور پشتیبان: ${err?.message}`);
+  }
+};
+
+const handleExportGoalsCsv = async () => {
+  try {
+    const csv = await CsvExportService.exportGoalsCsv();
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `kavosh-goals-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('خروجی اکسل/CSV اهداف با موفقیت دریافت شد.');
+  } catch (err: any) {
+    showToast(`خطا در صدور CSV اهداف: ${err?.message}`);
+  }
+};
+
+const handleExportHabitsCsv = async () => {
+  try {
+    const csv = await CsvExportService.exportHabitsCsv();
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `kavosh-habits-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('خروجی اکسل/CSV عادات با موفقیت دریافت شد.');
+  } catch (err: any) {
+    showToast(`خطا در صدور CSV عادات: ${err?.message}`);
+  }
+};
+
+const handleInstallClick = async () => {
+  if (isIos()) {
+    isIosInstallModalOpen.value = true;
+  } else if (isInstallable.value) {
+    await promptInstall();
+  } else {
+    showToast('امکان نصب خودکار در مرورگر فعلی فراهم نیست. لطفاً از منوی مرورگر Add to Home Screen را بزنید.');
   }
 };
 
@@ -223,80 +307,80 @@ const handleWipeData = async () => {
       </div>
     </section>
 
-    <!-- بخش اعلان‌ها و یادآورها -->
+    <!-- بخش اعلان‌ها و یادآورها (معماری چندلایه بدون سرور) -->
     <section class="settings-card">
-      <h3 class="card-heading">اعلان‌ها و یادآورها</h3>
+      <div class="card-header-row">
+        <h3 class="card-heading">سیستم یادآورها و اعلان‌ها (معماری چندلایه)</h3>
+        <span class="status-pill pill-success">
+          استراتژی فعال: {{ reminderStore.preferredScheduler === 'notification_trigger' ? 'اعلان سیستمی' : 'یادآور درون‌برنامه' }}
+        </span>
+      </div>
+
       <p class="section-notice">
-        <strong>شفاف‌سازی معماری:</strong> از آنجا که کاوش کاملاً سمت کاربر است و هیچ سرور خارجی ندارد، ارسال اعلان بدون باز بودن مرورگر تضمین‌شده نیست. در iOS نیز دریافت اعلان تنها پس از نصب PWA روی صفحه اصلی (iOS 16.4+) امکان‌پذیر است.
+        <strong>شفاف‌سازی معماری و محدودیت‌ها:</strong> کاوش ۱۰۰٪ کلاینت‌محور است و فاقد هرگونه سرور ابری است. مرورگرهای موبایل (به‌ویژه سافاری در iOS و کروم در اندروید با حالت صرفه‌جویی باتری) در صورت بسته شدن کامل برنامه، سرویس‌ورکر را تعلیق می‌کنند. از این رو، سه استراتژی موازی برای شما در نظر گرفته شده است:
       </p>
 
-      <div class="caps-info-list">
-        <div class="cap-item">
-          <span>دسترسی اعلان مرورگر:</span>
-          <span :class="['cap-status', notificationCaps.permission === 'granted' ? 'text-success' : 'text-muted']">
-            {{ notificationCaps.permission === 'granted' ? 'مجاز' : 'غیرفعال / نامشخص' }}
-          </span>
-        </div>
-        <div class="cap-item">
-          <span>Notification Triggers:</span>
-          <span :class="['cap-status', notificationCaps.hasNotificationTriggers ? 'text-success' : 'text-muted']">
-            {{ notificationCaps.hasNotificationTriggers ? 'پشتیبانی می‌شود' : 'غیرفعال در این مرورگر' }}
-          </span>
+      <div class="scheduler-capabilities-list">
+        <div
+          v-for="cap in reminderStore.capabilities"
+          :key="cap.id"
+          class="capability-card"
+        >
+          <div class="cap-header">
+            <div class="cap-title-col">
+              <strong class="cap-name">{{ cap.name }}</strong>
+              <span v-if="cap.isExperimental" class="badge-experimental">آزمایشی (Experimental)</span>
+            </div>
+            <span :class="['status-pill', cap.isAvailable ? 'pill-success' : 'pill-muted']">
+              {{ cap.isAvailable ? 'آماده / فعال' : 'غیرفعال در این مرورگر' }}
+            </span>
+          </div>
+          <p class="cap-desc">{{ cap.description }}</p>
+          <span class="cap-limitations"><strong>محدودیت:</strong> {{ cap.limitations }}</span>
         </div>
       </div>
 
-      <div class="notification-actions">
+      <div class="notification-actions-row">
         <AppButton
           variant="secondary"
           size="sm"
           :loading="isTestingNotification"
           @click="handleTestNotification"
         >
-          آزمایش ارسال اعلان
+          <AppIcon name="clock" size="16" />
+          آزمایش ارسال اعلان مرورگر
+        </AppButton>
+
+        <AppButton
+          variant="primary"
+          size="sm"
+          @click="handleDownloadAllHabitsIcs"
+        >
+          <AppIcon name="download" size="16" />
+          دریافت فایل تقویم همه عادات (.ics)
         </AppButton>
       </div>
     </section>
 
-    <!-- بخش حافظه و ذخیره‌سازی محلی -->
-    <section class="settings-card">
-      <h3 class="card-heading">حافظه و ماندگاری داده (IndexedDB)</h3>
-      <div class="storage-info-box">
-        <div class="storage-row">
-          <span>وضعیت پایداری حافظه (Persisted):</span>
-          <span :class="['status-pill', settingsStore.settings.isStoragePersisted ? 'pill-success' : 'pill-muted']">
-            {{ settingsStore.settings.isStoragePersisted ? 'پایدار و امن' : 'عادی' }}
-          </span>
-        </div>
-
-        <div v-if="settingsStore.storageEstimate" class="storage-row">
-          <span>حجم مصرفی پایگاه داده:</span>
-          <span>{{ settingsStore.storageEstimate.usageFormatted }}</span>
-        </div>
-      </div>
-
-      <div v-if="!settingsStore.settings.isStoragePersisted" class="storage-action">
-        <AppButton variant="secondary" size="sm" @click="handleRequestPersistence">
-          درخواست ذخیره‌سازی پایدار از مرورگر
-        </AppButton>
-      </div>
-    </section>
+    <!-- بخش سهمیه حافظه، ماندگاری داده‌ها، سلامت IndexedDB و بنچ‌مارک ۵۰K لاگ -->
+    <StorageManagerCard />
 
     <!-- بخش پشتیبان‌گیری و خروجی داده -->
     <section class="settings-card">
       <h3 class="card-heading">ورود و خروج داده‌ها</h3>
       <p class="section-notice">
-        تمام اهداف، عادات، لاگ‌ها و موانع خود را به صورت فایل استاندارد JSON ذخیره کنید تا در هر دستگاه دیگر قابل بازیابی باشد.
+        تمام اهداف، عادات، لاگ‌ها و موانع خود را به صورت فایل استاندارد JSON ذخیره کنید تا در هر دستگاه دیگر قابل بازیابی باشد، یا از خروجی سازگار با اکسل (CSV UTF-8) بهره ببرید.
       </p>
 
       <div class="backup-buttons-row">
         <AppButton variant="primary" size="md" @click="handleExportJson">
           <AppIcon name="download" size="18" />
-          دانلود نسخه پشتیبان (JSON)
+          دانلود نسخه پشتیبان کامل (JSON)
         </AppButton>
 
         <AppButton variant="secondary" size="md" @click="isEncryptModalOpen = true">
           <AppIcon name="shield" size="18" />
-          دانلود با رمزگذاری امن
+          دانلود نسخه رمزشده (AES-GCM)
         </AppButton>
 
         <label class="file-import-label">
@@ -304,6 +388,39 @@ const handleWipeData = async () => {
           <span>بارگذاری فایل پشتیبان</span>
           <input type="file" accept=".json" class="hidden-input" @change="handleFileSelect" />
         </label>
+      </div>
+
+      <div class="csv-export-row">
+        <AppButton variant="outline" size="sm" @click="handleExportGoalsCsv">
+          <AppIcon name="download" size="16" />
+          خروجی اکسل/CSV اهداف
+        </AppButton>
+        <AppButton variant="outline" size="sm" @click="handleExportHabitsCsv">
+          <AppIcon name="download" size="16" />
+          خروجی اکسل/CSV عادات و لاگ‌ها
+        </AppButton>
+      </div>
+    </section>
+
+    <!-- نصب و راه‌اندازی PWA -->
+    <section class="settings-card">
+      <h3 class="card-heading">نصب نرم‌افزار (PWA)</h3>
+      <p class="section-notice">
+        کاوش یک Progressive Web App است. با افزودن آن به صفحه اصلی دستگاه خود، از باز شدن سریع، تجربه تمام‌صفحه و کارکرد بی‌وقفه آفلاین لذت ببرید.
+      </p>
+      <div class="pwa-status-box">
+        <div class="pwa-status-row">
+          <span>وضعیت نصب در این دستگاه:</span>
+          <span :class="['status-pill', isInstalled ? 'pill-success' : 'pill-muted']">
+            {{ isInstalled ? 'نصب‌شده روی صفحه اصلی' : 'در حال اجرا در مرورگر' }}
+          </span>
+        </div>
+      </div>
+      <div class="guide-actions-row">
+        <AppButton v-if="!isInstalled" variant="secondary" size="sm" @click="handleInstallClick">
+          <AppIcon name="download" size="16" />
+          {{ isIos() ? 'راهنمای نصب روی آیفون/آیپد' : 'نصب مستقیم روی دستگاه' }}
+        </AppButton>
       </div>
     </section>
 
@@ -317,7 +434,21 @@ const handleWipeData = async () => {
       </div>
     </section>
 
-    <!-- درباره سازنده و حریم خصوصی -->
+    <!-- حریم خصوصی و امنیت داده‌ها -->
+    <section class="settings-card">
+      <h3 class="card-heading">حریم خصوصی و معماری ۱۰۰٪ محلی</h3>
+      <div class="privacy-notice-box">
+        <AppIcon name="shield" size="24" class="text-accent" />
+        <div class="privacy-text">
+          <strong>داده‌های شما فقط و فقط روی دستگاه شما ذخیره می‌شوند.</strong>
+          <p>
+            این برنامه فاقد هرگونه سرور پشتیبان، پایگاه داده ابری، سیستم لاگین یا ابزار تحلیلی و ردیابی (Analytics/Tracking) است. هیچ داده‌ای به هیچ سرور خارجی فرستاده نمی‌شود. در صورت پاک کردن کش مرورگر، اطلاعات از بین می‌روند؛ بنابراین توصیه می‌شود هر ۳۰ روز یک‌بار نسخه پشتیبان JSON دانلود کنید.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- درباره سازنده -->
     <section class="settings-card">
       <h3 class="card-heading">درباره کاوش</h3>
       <div class="about-content">
@@ -442,6 +573,12 @@ const handleWipeData = async () => {
       :is-open="isOnboardingModalOpen"
       @close="isOnboardingModalOpen = false"
     />
+
+    <!-- راهنمای گام‌به‌گام نصب در iOS -->
+    <IosInstallModal
+      :is-open="isIosInstallModalOpen"
+      @close="isIosInstallModalOpen = false"
+    />
   </div>
 </template>
 
@@ -511,23 +648,76 @@ const handleWipeData = async () => {
   gap: var(--spacing-sm);
 }
 
-.caps-info-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xxs);
-  font-size: var(--font-size-xs);
-  background-color: var(--color-bg-surface-soft);
-  padding: var(--spacing-sm);
-  border-radius: var(--radius-md);
-}
-
-.cap-item {
+.card-header-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
 }
 
-.cap-status {
-  font-weight: 600;
+.scheduler-capabilities-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-xs);
+}
+
+.capability-card {
+  background-color: var(--color-bg-surface-soft);
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cap-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.cap-title-col {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.cap-name {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.badge-experimental {
+  font-size: 10px;
+  font-weight: 700;
+  background-color: var(--color-warning-subtle);
+  color: var(--color-warning);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.cap-desc {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.cap-limitations {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.notification-actions-row {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+  margin-top: var(--spacing-xs);
 }
 
 .text-success {
@@ -666,5 +856,55 @@ const handleWipeData = async () => {
   gap: var(--spacing-xs);
   cursor: pointer;
   font-size: var(--font-size-xs);
+}
+
+.csv-export-row {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+  margin-top: var(--spacing-xs);
+  padding-top: var(--spacing-xs);
+  border-top: var(--border-width-hairline) dashed var(--color-border-subtle);
+}
+
+.pwa-status-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  font-size: var(--font-size-sm);
+  background-color: var(--color-bg-surface-soft);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-xs);
+}
+
+.pwa-status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.privacy-notice-box {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  background-color: var(--color-bg-surface-soft);
+  border: var(--border-width-hairline) solid var(--color-accent);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+}
+
+.privacy-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+
+.privacy-text strong {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
 }
 </style>

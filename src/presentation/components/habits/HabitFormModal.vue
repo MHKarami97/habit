@@ -5,6 +5,9 @@ import AppInput from '../common/AppInput.vue';
 import AppSelect from '../common/AppSelect.vue';
 import AppButton from '../common/AppButton.vue';
 import AppHelpTip from '../common/AppHelpTip.vue';
+import AppIcon from '../common/AppIcon.vue';
+import InteractiveHabitGuideModal from '../help/InteractiveHabitGuideModal.vue';
+import type { HabitExampleTemplate } from '../../data/interactiveExamples';
 import { HabitType } from '@/domain/value-objects/HabitType';
 import { RecurrenceType, RecurrenceConfig } from '@/domain/value-objects/RecurrenceConfig';
 import { useHabitStore } from '../../stores/useHabitStore';
@@ -23,6 +26,10 @@ const habitStore = useHabitStore();
 const goalStore = useGoalStore();
 const { effectiveTodayIso } = usePersianCalendar();
 
+// حالت ساخت: ویزارد گام‌به‌گام یا ساخت سریع
+const formMode = ref<'wizard' | 'quick'>('wizard');
+const wizardStep = ref<1 | 2 | 3>(1);
+
 const title = ref('');
 const habitType = ref<HabitType>('boolean');
 const recurrenceType = ref<RecurrenceType>('daily');
@@ -35,9 +42,24 @@ const cue = ref('');
 const linkedGoalId = ref<string>('');
 const reminderTime = ref('20:00');
 const weeklyFreezeAllowed = ref(true);
-
 const isSubmitting = ref(false);
 const error = ref('');
+const isGuideModalOpen = ref(false);
+
+const handleSelectTemplate = (tmpl: HabitExampleTemplate['data']) => {
+  title.value = tmpl.title;
+  habitType.value = tmpl.habitType;
+  recurrenceType.value = tmpl.recurrenceType;
+  if (tmpl.recurrenceDays) {
+    selectedWeekdays.value = [...tmpl.recurrenceDays];
+  }
+  dailyTarget.value = tmpl.dailyTarget;
+  unit.value = tmpl.unit;
+  cue.value = tmpl.cue;
+  if (tmpl.reminderTimes && tmpl.reminderTimes.length > 0) {
+    reminderTime.value = tmpl.reminderTimes[0] || '20:00';
+  }
+};
 
 const weekDayNames = [
   { index: 0, label: 'شنبه' },
@@ -80,12 +102,31 @@ const toggleWeekday = (idx: number) => {
   }
 };
 
-const handleSubmit = async () => {
+const validateStep1 = (): boolean => {
   error.value = '';
   if (!title.value.trim()) {
     error.value = 'عنوان عادت الزامی است.';
-    return;
+    return false;
   }
+  return true;
+};
+
+const nextWizardStep = () => {
+  if (wizardStep.value === 1 && !validateStep1()) return;
+  if (wizardStep.value < 3) {
+    wizardStep.value = (wizardStep.value + 1) as 2 | 3;
+  }
+};
+
+const prevWizardStep = () => {
+  if (wizardStep.value > 1) {
+    wizardStep.value = (wizardStep.value - 1) as 1 | 2;
+  }
+};
+
+const handleSubmit = async () => {
+  error.value = '';
+  if (!validateStep1()) return;
 
   let recurrence: RecurrenceConfig;
   if (recurrenceType.value === 'daily') {
@@ -121,6 +162,7 @@ const handleSubmit = async () => {
 
     title.value = '';
     cue.value = '';
+    wizardStep.value = 1;
     emit('close');
   } catch (err: any) {
     error.value = err?.message || 'خطا در تعریف عادت';
@@ -132,115 +174,288 @@ const handleSubmit = async () => {
 
 <template>
   <AppModal :is-open="isOpen" title="تعریف عادت جدید" @close="$emit('close')">
+    <!-- راهنمای تعاملی و مثال‌های آماده -->
+    <div class="interactive-guide-trigger-box">
+      <button
+        type="button"
+        class="interactive-guide-trigger-btn touch-target"
+        @click="isGuideModalOpen = true"
+      >
+        <AppIcon name="info" size="18" class="text-accent" />
+        <span>چطور عادت بسازم؟ (مشاهده مثال‌های آماده و اصول Tiny Habits)</span>
+      </button>
+    </div>
+
+    <!-- انتخاب حالت: ویزارد یا ساخت سریع -->
+    <div class="mode-switcher-row">
+      <button
+        type="button"
+        :class="['mode-btn', { 'mode-btn-active': formMode === 'wizard' }]"
+        @click="formMode = 'wizard'"
+      >
+        ویزارد گام‌به‌گام
+      </button>
+      <button
+        type="button"
+        :class="['mode-btn', { 'mode-btn-active': formMode === 'quick' }]"
+        @click="formMode = 'quick'"
+      >
+        ساخت سریع
+      </button>
+    </div>
+
+    <!-- نشانگر گام‌های ویزارد -->
+    <div v-if="formMode === 'wizard'" class="wizard-steps-indicator">
+      <div :class="['step-pill', { active: wizardStep === 1, done: wizardStep > 1 }]">
+        ۱. هویت رفتار
+      </div>
+      <div :class="['step-pill', { active: wizardStep === 2, done: wizardStep > 2 }]">
+        ۲. تکرار و هدف
+      </div>
+      <div :class="['step-pill', { active: wizardStep === 3 }]">
+        ۳. زمان و اتصال
+      </div>
+    </div>
+
     <form class="habit-form" @submit.prevent="handleSubmit">
       <p v-if="error" class="form-error">{{ error }}</p>
 
-      <!-- عنوان عادت با راهنمای شروع کوچک -->
-      <div class="field-container">
-        <div class="label-with-tip">
-          <label class="field-label">عنوان عادت *</label>
-          <AppHelpTip
-            tip="عادت را به اندازه‌ای کوچک طراحی کنید که انجام آن در سخت‌ترین روزها هم زحمتی نداشته باشد (شروع بسیار کوچک)."
-            good-example="خواندن ۵ صفحه کتاب قبل از خواب"
-            bad-example="روزی ۲ ساعت کتاب خواندن"
+      <!-- گام ۱: هویت رفتار -->
+      <section v-show="formMode === 'quick' || wizardStep === 1" class="step-section">
+        <!-- عنوان عادت با راهنمای شروع کوچک -->
+        <div class="field-container">
+          <div class="label-with-tip">
+            <label class="field-label">عنوان عادت *</label>
+            <AppHelpTip
+              tip="عادت را به اندازه‌ای کوچک طراحی کنید که انجام آن در سخت‌ترین روزها هم زحمتی نداشته باشد (شروع بسیار کوچک)."
+              good-example="خواندن ۵ صفحه کتاب قبل از خواب"
+              bad-example="روزی ۲ ساعت کتاب خواندن"
+            />
+          </div>
+          <AppInput
+            v-model="title"
+            placeholder="مثلاً: نوشیدن ۲ لیوان آب ناشتا"
+            required
           />
         </div>
-        <AppInput
-          v-model="title"
-          placeholder="مثلاً: نوشیدن ۲ لیوان آب ناشتا"
-          required
-        />
-      </div>
 
-      <!-- محرک / لنگر رفتاری (Cue) با راهنما -->
-      <div class="field-container">
-        <div class="label-with-tip">
-          <label class="field-label">محرک یا لنگر رفتاری (Cue)</label>
-          <AppHelpTip
-            tip="عادت جدید را بلافاصله به یک روال همیشگی و تثبیت‌شده در روز گره بزنید (تکنیک قلاب‌گذاری عادت)."
-            good-example="بلافاصله بعد از دم کردن چای صبحانه..."
-            bad-example="هر وقت یادم افتاد..."
+        <!-- محرک / لنگر رفتاری (Cue) با راهنما -->
+        <div class="field-container">
+          <div class="label-with-tip">
+            <label class="field-label">محرک یا لنگر رفتاری (Cue)</label>
+            <AppHelpTip
+              tip="عادت جدید را بلافاصله به یک روال همیشگی و تثبیت‌شده در روز گره بزنید (تکنیک قلاب‌گذاری عادت)."
+              good-example="بلافاصله بعد از دم کردن چای صبحانه..."
+              bad-example="هر وقت یادم افتاد..."
+            />
+          </div>
+          <AppInput
+            v-model="cue"
+            placeholder="مثلاً: بعد از مسواک زدن شب..."
           />
         </div>
-        <AppInput
-          v-model="cue"
-          placeholder="مثلاً: بعد از مسواک زدن شب..."
-        />
-      </div>
 
-      <!-- نوع عادت و قاعده تکرار -->
-      <div class="form-row">
         <AppSelect v-model="habitType" :options="habitTypeOptions" label="نوع عادت" />
+      </section>
+
+      <!-- گام ۲: تکرار و اهداف روزانه -->
+      <section v-show="formMode === 'quick' || wizardStep === 2" class="step-section">
         <AppSelect v-model="recurrenceType" :options="recurrenceTypeOptions" label="قاعده تکرار" />
-      </div>
 
-      <!-- انتخاب روزهای هفته در صورت انتخاب weekly_days -->
-      <div v-if="recurrenceType === 'weekly_days'" class="weekday-selector">
-        <label class="field-label">روزهای موعد انجام:</label>
-        <div class="weekdays-buttons">
-          <button
-            v-for="w in weekDayNames"
-            :key="w.index"
-            type="button"
-            :class="['weekday-pill', { 'pill-active': selectedWeekdays.includes(w.index) }]"
-            @click="toggleWeekday(w.index)"
-          >
-            {{ w.label }}
-          </button>
+        <!-- انتخاب روزهای هفته در صورت انتخاب weekly_days -->
+        <div v-if="recurrenceType === 'weekly_days'" class="weekday-selector">
+          <label class="field-label">روزهای موعد انجام:</label>
+          <div class="weekdays-buttons">
+            <button
+              v-for="w in weekDayNames"
+              :key="w.index"
+              type="button"
+              :class="['weekday-pill', { 'pill-active': selectedWeekdays.includes(w.index) }]"
+              @click="toggleWeekday(w.index)"
+            >
+              {{ w.label }}
+            </button>
+          </div>
         </div>
-      </div>
 
-      <!-- فاصله چند روز یک‌بار -->
-      <div v-else-if="recurrenceType === 'interval'" class="form-row">
-        <AppInput
-          v-model.number="intervalDays"
-          type="number"
-          label="هر چند روز یک‌بار؟"
+        <!-- فاصله چند روز یک‌بار -->
+        <div v-else-if="recurrenceType === 'interval'" class="form-row">
+          <AppInput
+            v-model.number="intervalDays"
+            type="number"
+            label="هر چند روز یک‌بار؟"
+          />
+        </div>
+
+        <!-- هدف روزانه و واحد (اگر بولی نباشد) -->
+        <div v-if="habitType !== 'boolean' && habitType !== 'quit'" class="form-row">
+          <AppInput v-model.number="dailyTarget" type="number" label="هدف روزانه" />
+          <AppInput v-model="unit" label="واحد (صفحه، دقیقه، بار)" />
+        </div>
+
+        <!-- امکان روز آزاد هفتگی (Freeze) -->
+        <label class="checkbox-label">
+          <input v-model="weeklyFreezeAllowed" type="checkbox" class="app-checkbox" />
+          <span>امکان سهمیه استراحت هفتگی (Freeze) برای حفظ استریک</span>
+        </label>
+      </section>
+
+      <!-- گام ۳: زمان‌بندی و اتصال به هدف -->
+      <section v-show="formMode === 'quick' || wizardStep === 3" class="step-section">
+        <!-- اتصال به یک هدف -->
+        <AppSelect
+          v-model="linkedGoalId"
+          :options="goalOptions"
+          label="اتصال به هدف کلان (اختیاری)"
         />
-      </div>
 
-      <!-- هدف روزانه و واحد (اگر بولی نباشد) -->
-      <div v-if="habitType !== 'boolean' && habitType !== 'quit'" class="form-row">
-        <AppInput v-model.number="dailyTarget" type="number" label="هدف روزانه" />
-        <AppInput v-model="unit" label="واحد (صفحه، دقیقه، بار)" />
-      </div>
-
-      <!-- اتصال به یک هدف -->
-      <AppSelect
-        v-model="linkedGoalId"
-        :options="goalOptions"
-        label="اتصال به هدف کلان (اختیاری)"
-      />
-
-      <!-- ساعت یادآور -->
-      <div class="form-row">
+        <!-- ساعت یادآور -->
         <AppInput
           v-model="reminderTime"
           type="time"
           label="ساعت یادآور روزانه"
         />
-      </div>
-
-      <!-- امکان روز آزاد هفتگی (Freeze) -->
-      <label class="checkbox-label">
-        <input v-model="weeklyFreezeAllowed" type="checkbox" class="app-checkbox" />
-        <span>اجازه استفاده از سهمیه استراحت هفتگی (Freeze) برای حفظ استریک</span>
-      </label>
+      </section>
 
       <div class="form-actions">
-        <AppButton variant="ghost" size="md" @click="$emit('close')">
+        <AppButton
+          v-if="formMode === 'wizard' && wizardStep > 1"
+          variant="secondary"
+          size="md"
+          type="button"
+          @click="prevWizardStep"
+        >
+          گام قبلی
+        </AppButton>
+
+        <AppButton variant="ghost" size="md" type="button" @click="$emit('close')">
           انصراف
         </AppButton>
-        <AppButton variant="primary" size="md" type="submit" :loading="isSubmitting">
-          ثبت عادت
+
+        <AppButton
+          v-if="formMode === 'wizard' && wizardStep < 3"
+          variant="primary"
+          size="md"
+          type="button"
+          @click="nextWizardStep"
+        >
+          گام بعدی
+        </AppButton>
+
+        <AppButton
+          v-else
+          variant="primary"
+          size="md"
+          type="submit"
+          :loading="isSubmitting"
+        >
+          {{ formMode === 'quick' ? 'ذخیره سریع عادت' : 'ثبت نهایی عادت' }}
         </AppButton>
       </div>
     </form>
+
+    <!-- راهنمای تعاملی و مثال‌های آماده -->
+    <InteractiveHabitGuideModal
+      :is-open="isGuideModalOpen"
+      @close="isGuideModalOpen = false"
+      @select-template="handleSelectTemplate"
+    />
   </AppModal>
 </template>
 
 <style scoped>
+.interactive-guide-trigger-box {
+  margin-bottom: var(--spacing-xs);
+}
+
+.interactive-guide-trigger-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--color-accent-subtle);
+  border: 1px dashed var(--color-accent);
+  border-radius: var(--radius-md);
+  color: var(--color-accent);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.interactive-guide-trigger-btn:hover {
+  background: var(--color-accent);
+  color: #ffffff;
+}
+
+.mode-switcher-row {
+  display: flex;
+  background-color: var(--color-bg-surface-soft);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  gap: 4px;
+  margin-bottom: var(--spacing-sm);
+}
+
+.mode-btn {
+  flex: 1;
+  min-height: 36px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  transition: all var(--transition-fast);
+}
+
+.mode-btn-active {
+  background-color: var(--color-bg-surface);
+  color: var(--color-accent);
+  box-shadow: var(--shadow-xs);
+  font-weight: 700;
+}
+
+.wizard-steps-indicator {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+}
+
+.step-pill {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 4px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-bg-surface-soft);
+  color: var(--color-text-muted);
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
+  transition: all var(--transition-fast);
+}
+
+.step-pill.active {
+  background-color: var(--color-accent);
+  color: #ffffff;
+  border-color: var(--color-accent);
+}
+
+.step-pill.done {
+  background-color: var(--color-success-subtle);
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+
 .habit-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.step-section {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);

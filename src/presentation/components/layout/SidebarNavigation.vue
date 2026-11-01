@@ -5,7 +5,7 @@ import AppIcon from '../common/AppIcon.vue';
 interface NavItem {
   to: string;
   label: string;
-  icon: 'calendar' | 'target' | 'flame' | 'chart' | 'settings';
+  icon: 'calendar' | 'target' | 'flame' | 'chart' | 'settings' | 'info';
 }
 
 const navItems: readonly NavItem[] = [
@@ -13,6 +13,7 @@ const navItems: readonly NavItem[] = [
   { to: '/goals', label: 'اهداف', icon: 'target' },
   { to: '/habits', label: 'ردیابی عادت‌ها', icon: 'flame' },
   { to: '/analytics', label: 'آمار و پایبندی', icon: 'chart' },
+  { to: '/guide', label: 'راهنمای علمی و عملی', icon: 'info' },
   { to: '/settings', label: 'تنظیمات و پشتیبان', icon: 'settings' }
 ];
 </script>

@@ -13,11 +13,14 @@ import OnboardingModal from './presentation/components/onboarding/OnboardingModa
 import AppButton from './presentation/components/common/AppButton.vue';
 import AppIcon from './presentation/components/common/AppIcon.vue';
 
+import { IndexedDBHealthService, type DatabaseHealthReport } from './infrastructure/db/IndexedDBHealthService';
+
 const settingsStore = useSettingsStore();
 const { applyTheme } = useTheme();
 const { isInstalled, needRefresh, promptInstall, isIos } = usePwa();
 
 const isIosModalOpen = ref(false);
+const dbHealthReport = ref<DatabaseHealthReport | null>(null);
 const isOnboardingOpen = computed(() => {
   return !settingsStore.isLoading && !settingsStore.settings.hasCompletedOnboarding;
 });
@@ -25,6 +28,9 @@ const isOnboardingOpen = computed(() => {
 onMounted(async () => {
   await settingsStore.loadSettings();
   applyTheme(settingsStore.settings.theme);
+
+  // بررسی سلامت دیتابیس محلی
+  dbHealthReport.value = await IndexedDBHealthService.checkHealth();
 });
 
 const handleInstallClick = async () => {
@@ -61,6 +67,19 @@ const reloadApp = () => {
           </AppButton>
         </template>
       </AppHeader>
+
+      <!-- بنر هشدار محدودیت یا خطای پایگاه داده مرورگر -->
+      <aside
+        v-if="dbHealthReport && !dbHealthReport.isHealthy"
+        class="db-health-warning-banner animate-slide-up"
+        role="alert"
+      >
+        <AppIcon name="alert" size="18" class="warning-icon" />
+        <div class="warning-text">
+          <strong>هشدار پایگاه داده: </strong>
+          <span>{{ dbHealthReport.statusMessage }}</span>
+        </div>
+      </aside>
 
       <main class="app-main-viewport">
         <RouterView />
@@ -131,5 +150,24 @@ const reloadApp = () => {
 
 .install-app-btn {
   font-size: var(--font-size-xs);
+}
+
+.db-health-warning-banner {
+  background-color: var(--color-danger-subtle);
+  color: var(--color-danger);
+  border-bottom: 1px solid var(--color-danger);
+  padding: var(--spacing-xs) var(--spacing-md);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+}
+
+.warning-icon {
+  flex-shrink: 0;
+}
+
+.warning-text {
+  line-height: 1.4;
 }
 </style>
