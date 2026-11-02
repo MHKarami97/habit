@@ -11,9 +11,10 @@ import InteractiveGoalGuideModal from '../help/InteractiveGoalGuideModal.vue';
 import TemplatePickerModal from '../templates/TemplatePickerModal.vue';
 import type { GoalExampleTemplate } from '../../data/interactiveExamples';
 import type { GoalTemplateData } from '@/domain/entities/UserTemplate';
-import { Goal } from '@/domain/entities/Goal';
+import { Goal, type GoalTimeframe } from '@/domain/entities/Goal';
 import { GoalPriority } from '@/domain/value-objects/GoalPriority';
 import { GoalStatus } from '@/domain/value-objects/GoalStatus';
+import { SolarDateMath } from '@/infrastructure/calendar/SolarDateMath';
 import { useGoalStore } from '../../stores/useGoalStore';
 import { usePersianCalendar } from '../../composables/usePersianCalendar';
 
@@ -46,6 +47,7 @@ const unit = ref('مورد');
 
 // فیلدهای سلسله‌مراتب و وابستگی
 const parentId = ref<string>('');
+const timeframe = ref<GoalTimeframe>('annual');
 const weight = ref<number>(1);
 const selectedPrereqIds = ref<string[]>([]);
 
@@ -56,6 +58,31 @@ const isSubmitting = ref(false);
 const formError = ref('');
 const isGuideModalOpen = ref(false);
 const isTemplateModalOpen = ref(false);
+
+const applyTimeframePreset = (preset: GoalTimeframe) => {
+  timeframe.value = preset;
+  const start = targetStartDate.value || effectiveTodayIso.value;
+  switch (preset) {
+    case '10_year':
+      deadline.value = SolarDateMath.addSolarYears(start, 10);
+      break;
+    case '5_year':
+      deadline.value = SolarDateMath.addSolarYears(start, 5);
+      break;
+    case '3_year':
+      deadline.value = SolarDateMath.addSolarYears(start, 3);
+      break;
+    case 'annual':
+      deadline.value = SolarDateMath.addSolarYears(start, 1);
+      break;
+    case 'quarterly':
+      deadline.value = SolarDateMath.addSolarMonths(start, 3);
+      break;
+    case 'monthly':
+      deadline.value = SolarDateMath.addSolarMonths(start, 1);
+      break;
+  }
+};
 
 const handleSelectGoalTemplate = (tmpl: GoalTemplateData) => {
   title.value = tmpl.title;
@@ -75,7 +102,7 @@ const handleSelectGoalTemplate = (tmpl: GoalTemplateData) => {
 const modalTitle = computed(() => (props.initialGoal ? 'ویرایش هدف' : 'تعریف هدف جدید'));
 
 const parentOptions = computed(() => {
-  const options = [{ value: '', label: 'بدون والد (سطح ۱: سالانه / کلان)' }];
+  const options = [{ value: '', label: 'بدون والد (سطح ریشه: ۱۰ ساله، ۵ ساله یا سالانه)' }];
   const currentEditingId = props.initialGoal?.id;
   for (const g of goalStore.goals) {
     if (g.canHaveChildren && !g.isArchived && g.id !== currentEditingId && g.parentId !== currentEditingId) {
@@ -97,15 +124,27 @@ const calculatedLevel = computed<1 | 2 | 3>(() => {
 });
 
 const calculatedLevelLabel = computed(() => {
+  if (calculatedLevel.value === 1) {
+    switch (timeframe.value) {
+      case '10_year':
+        return 'سطح ۱ (چشم‌انداز ۱۰ ساله)';
+      case '5_year':
+        return 'سطح ۱ (استراتژیک ۵ ساله)';
+      case '3_year':
+        return 'سطح ۱ (میان‌مدت ۳ ساله)';
+      case 'annual':
+        return 'سطح ۱ (هدف سالانه)';
+      default:
+        return 'سطح ۱ (کلان / ریشه)';
+    }
+  }
   switch (calculatedLevel.value) {
-    case 1:
-      return 'سطح ۱ (سالانه / استراتژیک)';
     case 2:
       return 'سطح ۲ (فصلی / مرحله‌ای)';
     case 3:
       return 'سطح ۳ (ماهانه / تاکتیکی)';
     default:
-      return 'سطح ۱ (سالانه / استراتژیک)';
+      return 'سطح ۱ (کلان / ریشه)';
   }
 });
 
@@ -137,6 +176,7 @@ watch(
         targetValue.value = initGoal.metric.targetValue;
         unit.value = initGoal.metric.unit;
         parentId.value = initGoal.parentId || '';
+        timeframe.value = initGoal.timeframe || 'annual';
         weight.value = initGoal.weight ?? 1;
         selectedPrereqIds.value = [...(initGoal.blockedByGoalIds || [])];
         formMode.value = 'quick';
@@ -146,11 +186,12 @@ watch(
         priority.value = 'medium';
         status.value = 'active';
         targetStartDate.value = effectiveTodayIso.value;
-        deadline.value = effectiveTodayIso.value;
+        deadline.value = SolarDateMath.addSolarYears(effectiveTodayIso.value, 1);
         startValue.value = 0;
         targetValue.value = 10;
         unit.value = 'مورد';
         parentId.value = initParentId ? String(initParentId) : '';
+        timeframe.value = initParentId ? 'quarterly' : 'annual';
         weight.value = 1;
         selectedPrereqIds.value = [];
         wizardStep.value = 1;
@@ -249,6 +290,7 @@ const handleSubmit = async () => {
         targetValue: Number(targetValue.value),
         unit: unit.value,
         parentId: parentId.value || undefined,
+        timeframe: timeframe.value,
         weight: Number(weight.value) || 1,
         blockedByGoalIds: selectedPrereqIds.value
       });
@@ -264,6 +306,7 @@ const handleSubmit = async () => {
         targetValue: Number(targetValue.value),
         unit: unit.value,
         parentId: parentId.value || undefined,
+        timeframe: timeframe.value,
         weight: Number(weight.value) || 1,
         blockedByGoalIds: selectedPrereqIds.value
       });
@@ -432,7 +475,7 @@ const handleSubmit = async () => {
           <div class="form-row">
             <AppInput v-model.number="startValue" type="number" label="مقدار شروع" />
             <AppInput v-model.number="targetValue" type="number" label="مقدار هدف" />
-            <AppInput v-model="unit" label="واحد سنجه (صفحه، کیلو و...)" />
+            <AppInput v-model="unit" label="واحد سنجه (صفحه و...)" />
           </div>
         </div>
       </section>
@@ -442,6 +485,62 @@ const handleSubmit = async () => {
         <div class="form-row">
           <AppSelect v-model="priority" :options="priorityOptions" label="اولویت هدف" />
           <AppSelect v-model="status" :options="statusOptions" label="وضعیت آغاز" />
+        </div>
+
+        <!-- افق زمانی هدف (Timeframe) -->
+        <div class="field-container">
+          <div class="label-with-tip">
+            <label class="field-label">افق زمانی و مدت هدف (Timeframe)</label>
+            <AppHelpTip
+              tip="مشخص کنید این هدف در چه افق زمانی مدنظر است. می‌توانید اهداف چشم‌انداز ۱۰ ساله یا ۵ ساله کلان تعریف کنید."
+              good-example="هدف ۱۰ ساله «استقلال مالی» یا ۵ ساله «تسلط کامل به زبان انگلیسی»"
+              bad-example="نامشخص گذاشتن افق زمانی هدف"
+            />
+          </div>
+          <div class="timeframe-chips-row">
+            <button
+              type="button"
+              :class="['tf-chip', 'tf-highlight', { 'tf-chip-active': timeframe === '10_year' }]"
+              @click="applyTimeframePreset('10_year')"
+            >
+              ۱۰ ساله (چشم‌انداز)
+            </button>
+            <button
+              type="button"
+              :class="['tf-chip', 'tf-highlight', { 'tf-chip-active': timeframe === '5_year' }]"
+              @click="applyTimeframePreset('5_year')"
+            >
+              ۵ ساله (استراتژیک)
+            </button>
+            <button
+              type="button"
+              :class="['tf-chip', { 'tf-chip-active': timeframe === '3_year' }]"
+              @click="applyTimeframePreset('3_year')"
+            >
+              ۳ ساله
+            </button>
+            <button
+              type="button"
+              :class="['tf-chip', { 'tf-chip-active': timeframe === 'annual' }]"
+              @click="applyTimeframePreset('annual')"
+            >
+              ۱ ساله (سالانه)
+            </button>
+            <button
+              type="button"
+              :class="['tf-chip', { 'tf-chip-active': timeframe === 'quarterly' }]"
+              @click="applyTimeframePreset('quarterly')"
+            >
+              فصلی (۳ ماهه)
+            </button>
+            <button
+              type="button"
+              :class="['tf-chip', { 'tf-chip-active': timeframe === 'monthly' }]"
+              @click="applyTimeframePreset('monthly')"
+            >
+              ماهانه
+            </button>
+          </div>
         </div>
 
         <div class="form-row">
@@ -807,5 +906,40 @@ const handleSubmit = async () => {
 .prereq-cand-lvl {
   font-size: 11px;
   color: var(--color-text-muted);
+}
+
+.timeframe-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xxs);
+}
+
+.tf-chip {
+  padding: 6px 12px;
+  background-color: var(--color-bg-surface-soft);
+  border: var(--border-width-regular) solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+
+.tf-chip:hover {
+  background-color: var(--color-bg-surface-elevated);
+  border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
+}
+
+.tf-chip-active {
+  background-color: var(--color-accent) !important;
+  border-color: var(--color-accent) !important;
+  color: #ffffff !important;
+}
+
+.tf-highlight {
+  border-color: var(--color-accent-subtle);
 }
 </style>

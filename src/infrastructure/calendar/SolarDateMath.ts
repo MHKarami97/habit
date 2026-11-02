@@ -215,4 +215,46 @@ export class SolarDateMath {
     }
     return result;
   }
+
+  /**
+   * افزودن سال شمسی به یک تاریخ میلادی ISO و بازگرداندن تاریخ میلادی ISO جدید
+   */
+  static addSolarYears(isoDate: string, years: number): string {
+    const parts = isoDate.split('-').map(Number);
+    const gy = parts[0] ?? 2026;
+    const gm = parts[1] ?? 1;
+    const gd = parts[2] ?? 1;
+    const s = this.gregorianToSolar(gy, gm, gd);
+
+    const newYear = s.year + years;
+    const maxDays = this.getDaysInSolarMonth(newYear, s.month);
+    const newDay = Math.min(s.day, maxDays);
+
+    const g = this.solarToGregorian(newYear, s.month, newDay);
+    const mStr = String(g.month).padStart(2, '0');
+    const dStr = String(g.day).padStart(2, '0');
+    return `${g.year}-${mStr}-${dStr}`;
+  }
+
+  /**
+   * افزودن ماه شمسی به یک تاریخ میلادی ISO و بازگرداندن تاریخ میلادی ISO جدید
+   */
+  static addSolarMonths(isoDate: string, months: number): string {
+    const parts = isoDate.split('-').map(Number);
+    const gy = parts[0] ?? 2026;
+    const gm = parts[1] ?? 1;
+    const gd = parts[2] ?? 1;
+    const s = this.gregorianToSolar(gy, gm, gd);
+
+    const totalMonths = s.year * 12 + (s.month - 1) + months;
+    const newYear = Math.floor(totalMonths / 12);
+    const newMonth = (totalMonths % 12) + 1;
+    const maxDays = this.getDaysInSolarMonth(newYear, newMonth);
+    const newDay = Math.min(s.day, maxDays);
+
+    const g = this.solarToGregorian(newYear, newMonth, newDay);
+    const mStr = String(g.month).padStart(2, '0');
+    const dStr = String(g.day).padStart(2, '0');
+    return `${g.year}-${mStr}-${dStr}`;
+  }
 }

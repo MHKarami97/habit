@@ -18,6 +18,7 @@ export interface GoalRecord {
   isArchived: number; // 0 or 1 for IndexedDB indexing
   parentId?: string;
   hierarchyLevel?: number;
+  timeframe?: '10_year' | '5_year' | '3_year' | 'annual' | 'quarterly' | 'monthly' | 'custom';
   weight?: number;
   blockedByGoalIdsJson?: string;
   createdAt: string;
@@ -202,6 +203,19 @@ export class AppDatabase extends Dexie {
     // نسخه ۵ (فاز ۳ - بسته ۲): جدول قالب‌های شخصی ساخته‌شده توسط کاربر
     this.version(5).stores({
       userTemplates: 'id, type, categoryId, createdAt'
+    });
+
+    // نسخه ۶: اضافه شدن ایندکس timeframe برای اهداف ۱۰ ساله، ۵ ساله، ۳ ساله، سالانه، فصلی و ماهانه
+    this.version(6).stores({
+      goals: 'id, status, categoryId, priority, deadline, isArchived, parentId, hierarchyLevel, timeframe, createdAt, updatedAt'
+    }).upgrade(async tx => {
+      await tx.table('goals').toCollection().modify((record: any) => {
+        if (!record.timeframe) {
+          if (record.hierarchyLevel === 2) record.timeframe = 'quarterly';
+          else if (record.hierarchyLevel === 3) record.timeframe = 'monthly';
+          else record.timeframe = 'annual';
+        }
+      });
     });
   }
 }

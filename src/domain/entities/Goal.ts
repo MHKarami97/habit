@@ -2,7 +2,16 @@ import { GoalPriority } from '../value-objects/GoalPriority';
 import { GoalStatus } from '../value-objects/GoalStatus';
 import { MetricTarget } from '../value-objects/MetricTarget';
 
-export type GoalHierarchyLevel = 1 | 2 | 3; // ۱: سالانه، ۲: فصلی، ۳: ماهانه
+export type GoalHierarchyLevel = 1 | 2 | 3; // ۱: کلان / سالانه / بلندمدت، ۲: فصلی / مرحله‌ای، ۳: ماهانه / تاکتیکی
+
+export type GoalTimeframe =
+  | '10_year'
+  | '5_year'
+  | '3_year'
+  | 'annual'
+  | 'quarterly'
+  | 'monthly'
+  | 'custom';
 
 export interface GoalProps {
   readonly id: string;
@@ -19,6 +28,7 @@ export interface GoalProps {
   readonly isArchived: boolean;
   readonly parentId?: string; // شناسه هدف والد (اختیاری)
   readonly hierarchyLevel?: GoalHierarchyLevel; // پیش‌فرض: ۱ (سطح ریشه)
+  readonly timeframe?: GoalTimeframe; // افق زمانی هدف (۱۰ ساله، ۵ ساله، سالانه، فصلی و...)
   readonly weight?: number; // وزن در محاسبه پیشرفت والد (پیش‌فرض: ۱)
   readonly blockedByGoalIds?: readonly string[]; // شناسه‌های اهداف پیش‌نیاز
   readonly createdAt: string; // ISO timestamp
@@ -40,6 +50,7 @@ export class Goal {
   readonly isArchived: boolean;
   readonly parentId?: string;
   readonly hierarchyLevel: GoalHierarchyLevel;
+  readonly timeframe: GoalTimeframe;
   readonly weight: number;
   readonly blockedByGoalIds: readonly string[];
   readonly createdAt: string;
@@ -53,12 +64,19 @@ export class Goal {
 
     const level = props.hierarchyLevel || 1;
     if (level < 1 || level > 3) {
-      throw new Error('سطح سلسله‌مراتب هدف باید ۱ (سالانه)، ۲ (فصلی) یا ۳ (ماهانه) باشد');
+      throw new Error('سطح سلسله‌مراتب هدف باید ۱ (سالانه / کلان)، ۲ (فصلی) یا ۳ (ماهانه) باشد');
     }
 
     const weight = props.weight !== undefined ? props.weight : 1;
     if (weight <= 0) {
       throw new Error('وزن هدف در سلسله‌مراتب باید بزرگتر از صفر باشد');
+    }
+
+    let resolvedTimeframe: GoalTimeframe = props.timeframe || 'annual';
+    if (!props.timeframe) {
+      if (level === 2) resolvedTimeframe = 'quarterly';
+      else if (level === 3) resolvedTimeframe = 'monthly';
+      else resolvedTimeframe = 'annual';
     }
 
     this.id = props.id;
@@ -75,6 +93,7 @@ export class Goal {
     this.isArchived = props.isArchived;
     this.parentId = props.parentId?.trim() || undefined;
     this.hierarchyLevel = level;
+    this.timeframe = resolvedTimeframe;
     this.weight = weight;
     this.blockedByGoalIds = props.blockedByGoalIds ? [...props.blockedByGoalIds] : [];
     this.createdAt = props.createdAt;
@@ -96,9 +115,36 @@ export class Goal {
   }
 
   /**
+   * برچسب افق زمانی هدف
+   */
+  get timeframeLabel(): string {
+    switch (this.timeframe) {
+      case '10_year':
+        return 'هدف ۱۰ ساله (چشم‌انداز)';
+      case '5_year':
+        return 'هدف ۵ ساله (استراتژیک)';
+      case '3_year':
+        return 'هدف ۳ ساله (میان‌مدت)';
+      case 'annual':
+        return 'هدف ۱ ساله (سالانه)';
+      case 'quarterly':
+        return 'هدف فصلی (مرحله‌ای)';
+      case 'monthly':
+        return 'هدف ماهانه (تاکتیکی)';
+      case 'custom':
+        return 'هدف سفارشی';
+      default:
+        return 'هدف سالانه';
+    }
+  }
+
+  /**
    * برچسب سطح سلسله‌مراتب
    */
   get hierarchyLevelLabel(): string {
+    if (this.timeframe && this.timeframe !== 'custom') {
+      return this.timeframeLabel;
+    }
     switch (this.hierarchyLevel) {
       case 1:
         return 'هدف سالانه (استراتژیک)';
@@ -173,7 +219,7 @@ export class Goal {
   }
 
   withHierarchy(
-    props: { parentId?: string; hierarchyLevel?: GoalHierarchyLevel; weight?: number },
+    props: { parentId?: string; hierarchyLevel?: GoalHierarchyLevel; weight?: number; timeframe?: GoalTimeframe },
     updatedAtIso: string
   ): Goal {
     return new Goal({
@@ -181,6 +227,7 @@ export class Goal {
       parentId: props.parentId !== undefined ? props.parentId : this.parentId,
       hierarchyLevel: props.hierarchyLevel !== undefined ? props.hierarchyLevel : this.hierarchyLevel,
       weight: props.weight !== undefined ? props.weight : this.weight,
+      timeframe: props.timeframe !== undefined ? props.timeframe : this.timeframe,
       updatedAt: updatedAtIso
     });
   }

@@ -1,5 +1,5 @@
 import { IGoalRepository } from '@/domain/ports/IGoalRepository';
-import { Goal, type GoalHierarchyLevel } from '@/domain/entities/Goal';
+import { Goal, type GoalHierarchyLevel, type GoalTimeframe } from '@/domain/entities/Goal';
 import { MetricTarget } from '@/domain/value-objects/MetricTarget';
 import { GoalPriority } from '@/domain/value-objects/GoalPriority';
 import { GoalStatus } from '@/domain/value-objects/GoalStatus';
@@ -19,6 +19,7 @@ export interface UpdateGoalInput {
   readonly targetValue: number;
   readonly unit: string;
   readonly parentId?: string;
+  readonly timeframe?: GoalTimeframe;
   readonly weight?: number;
   readonly blockedByGoalIds?: readonly string[];
 }
@@ -80,6 +81,7 @@ export class UpdateGoalUseCase {
       isArchived: existing.isArchived,
       parentId: input.parentId || undefined,
       hierarchyLevel,
+      timeframe: input.timeframe !== undefined ? input.timeframe : existing.timeframe,
       weight: input.weight !== undefined ? input.weight : existing.weight,
       blockedByGoalIds: input.blockedByGoalIds || [],
       createdAt: existing.createdAt,

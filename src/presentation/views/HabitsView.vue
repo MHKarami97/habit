@@ -84,7 +84,7 @@ const openBackfill = (habit: Habit) => {
     </div>
 
     <AppEmptyState
-      v-else
+      v-else-if="visibleHabits.length === 0"
       title="هنوز عادتی اضافه نکرده‌اید"
       description="عادت‌ها سنگ‌بنای شکل‌گیری شخصیت و دستیابی به اهداف هستند."
     >

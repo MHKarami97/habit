@@ -39,7 +39,24 @@ watch(() => props.isOpen, (open) => {
   if (open) initFromModelValue();
 });
 
-const currentMonthName = computed(() => SOLAR_MONTH_NAMES[viewSolarMonth.value - 1] ?? '');
+const availableYears = computed(() => {
+  const currentYear = viewSolarYear.value;
+  const start = Math.min(1400, currentYear - 5);
+  const end = Math.max(1430, currentYear + 15);
+  const years: number[] = [];
+  for (let y = start; y <= end; y++) {
+    years.push(y);
+  }
+  return years;
+});
+
+const jumpYears = (delta: number) => {
+  viewSolarYear.value += delta;
+};
+
+const jumpToToday = () => {
+  initFromModelValue();
+};
 
 const daysInCurrentMonth = computed(() => {
   return SolarDateMath.getDaysInSolarMonth(viewSolarYear.value, viewSolarMonth.value);
@@ -115,13 +132,41 @@ const formatDigit = (num: number) => {
           <AppIcon name="chevron-right" size="18" />
         </button>
 
-        <div class="month-year-label">
-          <span class="month-name">{{ currentMonthName }}</span>
-          <span class="year-num">{{ formatDigit(viewSolarYear) }}</span>
+        <div class="month-year-dropdowns">
+          <select v-model.number="viewSolarMonth" class="picker-select" aria-label="انتخاب ماه">
+            <option v-for="(mName, idx) in SOLAR_MONTH_NAMES" :key="idx" :value="idx + 1">
+              {{ mName }}
+            </option>
+          </select>
+
+          <select v-model.number="viewSolarYear" class="picker-select" aria-label="انتخاب سال">
+            <option v-for="y in availableYears" :key="y" :value="y">
+              {{ formatDigit(y) }}
+            </option>
+          </select>
         </div>
 
         <button type="button" class="nav-btn touch-target" aria-label="ماه قبل" @click="prevMonth">
           <AppIcon name="chevron-left" size="18" />
+        </button>
+      </div>
+
+      <!-- دکمه‌های پرش سریع سال (برای اهداف ۵ ساله و ۱۰ ساله) -->
+      <div class="quick-year-chips">
+        <button type="button" class="quick-chip" @click="jumpToToday">
+          امروز
+        </button>
+        <button type="button" class="quick-chip" @click="jumpYears(1)">
+          +۱ سال
+        </button>
+        <button type="button" class="quick-chip" @click="jumpYears(3)">
+          +۳ سال
+        </button>
+        <button type="button" class="quick-chip highlight-chip" @click="jumpYears(5)">
+          +۵ سال
+        </button>
+        <button type="button" class="quick-chip highlight-chip" @click="jumpYears(10)">
+          +۱۰ سال
         </button>
       </div>
 
@@ -187,13 +232,57 @@ const formatDigit = (num: number) => {
   padding: 0 var(--spacing-xs);
 }
 
-.month-year-label {
+.month-year-dropdowns {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  font-size: var(--font-size-base);
-  font-weight: 700;
+}
+
+.picker-select {
+  padding: var(--spacing-xxs) var(--spacing-xs);
+  background-color: var(--color-bg-surface-soft);
+  border: var(--border-width-regular) solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
   color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  cursor: pointer;
+  outline: none;
+}
+.picker-select:focus {
+  border-color: var(--color-accent);
+}
+
+.quick-year-chips {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+  padding: 0 var(--spacing-xs);
+}
+
+.quick-chip {
+  padding: 4px 10px;
+  background-color: var(--color-bg-surface-soft);
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+.quick-chip:hover {
+  background-color: var(--color-bg-surface-elevated);
+  color: var(--color-text-primary);
+}
+.highlight-chip {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.highlight-chip:hover {
+  background-color: var(--color-accent-soft);
 }
 
 .nav-btn {

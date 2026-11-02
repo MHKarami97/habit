@@ -196,7 +196,7 @@ const dismissAlert = (id: string) => {
 
       <!-- حالت خالی -->
       <AppEmptyState
-        v-else
+        v-else-if="visibleGoals.length === 0"
         title="هدفی با این مشخصات یافت نشد"
         description="می‌توانید فیلتر وضعیت را تغییر دهید یا یک هدف جدید تعریف نمایید."
       >

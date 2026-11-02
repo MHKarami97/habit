@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { Goal } from '@/domain/entities/Goal';
 import type { GoalTreeNode } from '@/domain/services/GoalHierarchyService';
 import { usePersianCalendar } from '../../composables/usePersianCalendar';
 import AppIcon from '../common/AppIcon.vue';
@@ -28,16 +29,19 @@ const navigateToDetail = () => {
   router.push(`/goals/${goal.id}`);
 };
 
-const getLevelBadge = (level: number) => {
-  switch (level) {
+const getLevelBadge = (g: Goal) => {
+  if (g.timeframe && g.timeframe !== 'custom') {
+    return { label: g.timeframeLabel, class: `level-${g.hierarchyLevel}` };
+  }
+  switch (g.hierarchyLevel) {
     case 1:
-      return { label: 'سالانه (استراتژیک)', class: 'level-1' };
+      return { label: 'کلان / سالانه', class: 'level-1' };
     case 2:
       return { label: 'فصلی (مرحله‌ای)', class: 'level-2' };
     case 3:
       return { label: 'ماهانه (تاکتیکی)', class: 'level-3' };
     default:
-      return { label: `سطح ${level}`, class: 'level-1' };
+      return { label: `سطح ${g.hierarchyLevel}`, class: 'level-1' };
   }
 };
 </script>
@@ -61,8 +65,8 @@ const getLevelBadge = (level: number) => {
       <div class="tree-node-card" @click="navigateToDetail">
         <div class="node-header">
           <div class="node-title-group">
-            <span :class="['level-badge', getLevelBadge(goal.hierarchyLevel).class]">
-              {{ getLevelBadge(goal.hierarchyLevel).label }}
+            <span :class="['level-badge', getLevelBadge(goal).class]">
+              {{ getLevelBadge(goal).label }}
             </span>
             <strong class="goal-title">{{ goal.title }}</strong>
             <span v-if="goal.weight && goal.weight > 1" class="weight-tag" title="وزن در هدف والد">
