@@ -50,7 +50,7 @@ const navItems: readonly NavItem[] = [
     <div class="sidebar-footer">
       <span class="privacy-badge">
         <AppIcon name="shield" size="14" />
-        ۱۰۰٪ محلی و آفلاین
+        mhkarami97.ir
       </span>
     </div>
   </aside>
