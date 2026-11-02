@@ -17,12 +17,28 @@ import { IndexedDBHealthService, type DatabaseHealthReport } from './infrastruct
 import { useAppLockStore } from './presentation/stores/useAppLockStore';
 import PinLockOverlay from './presentation/components/security/PinLockOverlay.vue';
 import { useI18n } from './presentation/i18n/useI18n';
+import SyncFailedBar from './presentation/components/common/SyncFailedBar.vue';
+import CloudConflictModal from './presentation/components/cloud/CloudConflictModal.vue';
+import AppToast from './presentation/components/common/AppToast.vue';
+import { useCloudSyncStore } from './presentation/stores/useCloudSyncStore';
 
 const settingsStore = useSettingsStore();
 const appLockStore = useAppLockStore();
+const cloudSyncStore = useCloudSyncStore();
 const { applyTheme } = useTheme();
 const { initI18n } = useI18n();
 const { isInstalled, needRefresh, updateServiceWorker, promptInstall, isIos } = usePwa();
+
+const appToastMessage = ref('');
+const appToastType = ref<'success' | 'warning' | 'danger' | 'info'>('info');
+
+const handleShowToast = (msg: string, type: 'success' | 'warning' | 'danger' | 'info' = 'info') => {
+  appToastMessage.value = msg;
+  appToastType.value = type;
+  setTimeout(() => {
+    appToastMessage.value = '';
+  }, 4000);
+};
 
 const isIosModalOpen = ref(false);
 const dbHealthReport = ref<DatabaseHealthReport | null>(null);
@@ -38,6 +54,9 @@ onMounted(async () => {
 
   // بررسی سلامت دیتابیس محلی
   dbHealthReport.value = await IndexedDBHealthService.checkHealth();
+
+  // همگام‌سازی و بررسی نسخه ابری در پس‌زمینه (بدون مسدودسازی رندر اولیه)
+  void cloudSyncStore.start();
 });
 
 const handleInstallClick = async () => {
@@ -122,6 +141,18 @@ const handleUpdateApp = async () => {
 
     <!-- لایه قفل ورود (PIN Lock Overlay) -->
     <PinLockOverlay />
+
+    <!-- نوار وضعیت خطای همگام‌سازی ابری و پنجره تصمیم‌گیری تعارض -->
+    <SyncFailedBar />
+    <CloudConflictModal @toast="handleShowToast" />
+
+    <!-- اعلان پیام‌های سراسری (Toast) -->
+    <AppToast
+      :show="Boolean(appToastMessage)"
+      :type="appToastType"
+      :message="appToastMessage"
+      @close="appToastMessage = ''"
+    />
   </div>
 </template>
 

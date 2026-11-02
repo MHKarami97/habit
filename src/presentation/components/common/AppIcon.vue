@@ -30,7 +30,12 @@ defineProps<{
     | 'lock'
     | 'alert-triangle'
     | 'backspace'
-    | 'minus';
+    | 'minus'
+    | 'cloud'
+    | 'cloud-off'
+    | 'link'
+    | 'unlink'
+    | 'undo';
   size?: number | string;
 }>();
 </script>
@@ -168,6 +173,30 @@ defineProps<{
       <path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z" />
       <line x1="18" y1="9" x2="12" y2="15" />
       <line x1="12" y1="9" x2="18" y2="15" />
+    </g>
+    <!-- cloud -->
+    <path v-else-if="name === 'cloud'" d="M17.5 19H9a7 7 0 116.71-9h1.79a4.5 4.5 0 110 9z" />
+    <!-- cloud-off -->
+    <g v-else-if="name === 'cloud-off'">
+      <line x1="2" y1="2" x2="22" y2="22" />
+      <path d="M5.78 5.78A7 7 0 009 19h8.5a4.5 4.5 0 001.31-.19" />
+      <path d="M21.53 16.5A4.5 4.5 0 0017.5 10h-1.79A7.01 7.01 0 0010 5.07" />
+    </g>
+    <!-- link -->
+    <g v-else-if="name === 'link'">
+      <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+    </g>
+    <!-- unlink -->
+    <g v-else-if="name === 'unlink'">
+      <path d="m18.84 12.25 1.72-1.71a5 5 0 00-7.07-7.07l-1.72 1.71" />
+      <path d="m5.16 11.75-1.72 1.71a5 5 0 007.07 7.07l1.71-1.71" />
+      <line x1="2" y1="2" x2="22" y2="22" />
+    </g>
+    <!-- undo -->
+    <g v-else-if="name === 'undo'">
+      <polyline points="3 7 3 13 9 13" />
+      <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13" />
     </g>
   </svg>
 </template>

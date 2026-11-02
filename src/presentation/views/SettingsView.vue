@@ -20,6 +20,7 @@ import AppModal from '../components/common/AppModal.vue';
 import IosInstallModal from '../components/layout/IosInstallModal.vue';
 import OnboardingModal from '../components/onboarding/OnboardingModal.vue';
 import StorageManagerCard from '../components/settings/StorageManagerCard.vue';
+import CloudBackupCard from '../components/settings/CloudBackupCard.vue';
 import PinSetupModal from '../components/security/PinSetupModal.vue';
 import { useAppLockStore } from '../stores/useAppLockStore';
 import { useI18n, type AppLanguage } from '../i18n/useI18n';
@@ -496,6 +497,9 @@ const handleWipeData = async () => {
         </AppButton>
       </div>
     </section>
+
+    <!-- بخش پشتیبان‌گیری خودکار در Google Drive -->
+    <CloudBackupCard @toast="showToast" />
 
     <!-- امنیت و قفل ورود به برنامه (PIN Lock) -->
     <section class="settings-card">

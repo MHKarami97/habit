@@ -47,7 +47,10 @@ export class JsonBackupService {
   /**
    * تهیه خروجی کامل از پایگاه داده (به صورت عادی یا رمزگذاری‌شده با گذرواژه)
    */
-  static async exportData(password?: string): Promise<string> {
+  /**
+   * تهیه شیء استاندارد پشتیبان داده‌ها به همراه فیلتر تنظیمات اختصاصی دستگاه در صورت نیاز
+   */
+  static async buildPayload(options: { excludeDeviceSettings?: boolean } = {}): Promise<BackupPayload> {
     const [
       goals,
       milestones,
@@ -72,7 +75,15 @@ export class JsonBackupService {
       db.userTemplates.toArray()
     ]);
 
-    const payload: BackupPayload = {
+    const settingsMap = settings ? { ...settings } : {};
+    if (options.excludeDeviceSettings) {
+      delete (settingsMap as any).isPinLockEnabled;
+      delete (settingsMap as any).pinHashHex;
+      delete (settingsMap as any).pinSaltHex;
+      delete (settingsMap as any).lockTimeoutMinutes;
+    }
+
+    return {
       appName: 'KavoshHabitGoal',
       schemaVersion: UserSettings.CURRENT_SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
@@ -83,13 +94,19 @@ export class JsonBackupService {
         obstacleLogs,
         habits,
         habitLogs,
-        settings: settings || {},
+        settings: settingsMap,
         reminderLogs,
         periodicReviews,
         userTemplates
       }
     };
+  }
 
+  /**
+   * تهیه خروجی کامل از پایگاه داده (به صورت عادی یا رمزگذاری‌شده با گذرواژه)
+   */
+  static async exportData(password?: string): Promise<string> {
+    const payload = await this.buildPayload();
     const jsonString = JSON.stringify(payload, null, 2);
 
     if (password && password.trim()) {
@@ -283,5 +300,105 @@ export class JsonBackupService {
         }
       }
     );
+  }
+
+  /**
+   * بازیابی داده‌های ابری به صورت مستقیم با امکان انتخاب جایگزینی یا ادغام هوشمند
+   */
+  static async restoreCloudPayload(
+    payload: BackupPayload,
+    mode: 'merge' | 'replace'
+  ): Promise<{ restoredCount: number }> {
+    if (!payload.data) {
+      throw new Error('هیچ داده‌ای در این فایل پشتیبان یافت نشد.');
+    }
+
+    const {
+      goals = [],
+      milestones = [],
+      actionLogs = [],
+      obstacleLogs = [],
+      habits = [],
+      habitLogs = [],
+      settings,
+      reminderLogs = [],
+      periodicReviews = [],
+      userTemplates = []
+    } = payload.data;
+
+    await db.transaction(
+      'rw',
+      [
+        db.goals,
+        db.milestones,
+        db.actionLogs,
+        db.obstacleLogs,
+        db.habits,
+        db.habitLogs,
+        db.settings,
+        db.reminderLogs,
+        db.periodicReviews,
+        db.userTemplates
+      ],
+      async () => {
+        if (mode === 'replace') {
+          await Promise.all([
+            db.goals.clear(),
+            db.milestones.clear(),
+            db.actionLogs.clear(),
+            db.obstacleLogs.clear(),
+            db.habits.clear(),
+            db.habitLogs.clear(),
+            db.reminderLogs.clear(),
+            db.periodicReviews.clear(),
+            db.userTemplates.clear()
+          ]);
+          if (Array.isArray(goals) && goals.length > 0) await db.goals.bulkPut(goals as any);
+          if (Array.isArray(habits) && habits.length > 0) await db.habits.bulkPut(habits as any);
+        } else {
+          // در حالت ادغام: مقایسه تاریخ بروزرسانی برای اهداف و عادات
+          if (Array.isArray(goals) && goals.length > 0) {
+            const current = await db.goals.bulkGet(goals.map((g: any) => g.id));
+            const newer = goals.filter((g: any, i: number) => {
+              const existing = current[i];
+              return !existing || (g.updatedAt || '') >= (existing.updatedAt || '');
+            });
+            if (newer.length > 0) await db.goals.bulkPut(newer as any);
+          }
+          if (Array.isArray(habits) && habits.length > 0) {
+            const current = await db.habits.bulkGet(habits.map((h: any) => h.id));
+            const newer = habits.filter((h: any, i: number) => {
+              const existing = current[i];
+              return !existing || (h.updatedAt || '') >= (existing.updatedAt || '');
+            });
+            if (newer.length > 0) await db.habits.bulkPut(newer as any);
+          }
+        }
+
+        if (Array.isArray(milestones) && milestones.length > 0) await db.milestones.bulkPut(milestones as any);
+        if (Array.isArray(actionLogs) && actionLogs.length > 0) await db.actionLogs.bulkPut(actionLogs as any);
+        if (Array.isArray(obstacleLogs) && obstacleLogs.length > 0) await db.obstacleLogs.bulkPut(obstacleLogs as any);
+        if (Array.isArray(habitLogs) && habitLogs.length > 0) await db.habitLogs.bulkPut(habitLogs as any);
+        if (Array.isArray(reminderLogs) && reminderLogs.length > 0) await db.reminderLogs.bulkPut(reminderLogs as any);
+        if (Array.isArray(periodicReviews) && periodicReviews.length > 0) await db.periodicReviews.bulkPut(periodicReviews as any);
+        if (Array.isArray(userTemplates) && userTemplates.length > 0) await db.userTemplates.bulkPut(userTemplates as any);
+
+        if (settings && typeof settings === 'object') {
+          const currentSettings = await db.settings.get(UserSettings.SINGLETON_ID);
+          const mergedSettings = {
+            ...settings,
+            // حفظ تنظیمات امنیتی محلی دستگاه فعلی
+            isPinLockEnabled: currentSettings?.isPinLockEnabled ?? false,
+            pinHashHex: currentSettings?.pinHashHex,
+            pinSaltHex: currentSettings?.pinSaltHex,
+            lockTimeoutMinutes: currentSettings?.lockTimeoutMinutes ?? 0,
+            id: UserSettings.SINGLETON_ID
+          };
+          await db.settings.put(mergedSettings as any);
+        }
+      }
+    );
+
+    return { restoredCount: (goals?.length || 0) + (habits?.length || 0) };
   }
 }
