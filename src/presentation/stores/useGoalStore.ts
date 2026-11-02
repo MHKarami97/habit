@@ -7,6 +7,7 @@ import { ObstacleLog } from '@/domain/entities/ObstacleLog';
 import { GoalStatus } from '@/domain/value-objects/GoalStatus';
 import { container } from '@/infrastructure/di/container';
 import { CreateGoalUseCase, CreateGoalInput } from '@/application/use-cases/goals/CreateGoalUseCase';
+import { UpdateGoalUseCase, UpdateGoalInput } from '@/application/use-cases/goals/UpdateGoalUseCase';
 import { TransitionGoalStatusUseCase } from '@/application/use-cases/goals/TransitionGoalStatusUseCase';
 import { LogActionUseCase, LogActionInput } from '@/application/use-cases/goals/LogActionUseCase';
 import { RecordObstacleUseCase, RecordObstacleInput } from '@/application/use-cases/goals/RecordObstacleUseCase';
@@ -32,6 +33,7 @@ export const useGoalStore = defineStore('goals', () => {
   const searchQuery = ref('');
 
   const createGoalUseCase = new CreateGoalUseCase(container.goalRepo);
+  const updateGoalUseCase = new UpdateGoalUseCase(container.goalRepo);
   const transitionStatusUseCase = new TransitionGoalStatusUseCase(container.goalRepo);
   const logActionUseCase = new LogActionUseCase(container.goalRepo);
   const recordObstacleUseCase = new RecordObstacleUseCase(container.goalRepo);
@@ -132,6 +134,13 @@ export const useGoalStore = defineStore('goals', () => {
     const created = await createGoalUseCase.execute(input);
     await loadGoals();
     return created;
+  };
+
+  const updateGoal = async (input: UpdateGoalInput) => {
+    const updated = await updateGoalUseCase.execute(input);
+    await loadGoals();
+    await loadGoalDetails(input.id);
+    return updated;
   };
 
   const transitionStatus = async (goalId: string, status: GoalStatus) => {
@@ -264,6 +273,7 @@ export const useGoalStore = defineStore('goals', () => {
     loadGoals,
     loadGoalDetails,
     createGoal,
+    updateGoal,
     transitionStatus,
     getGoalEffectiveProgress,
     getGoalChildren,

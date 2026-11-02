@@ -35,6 +35,7 @@ const isActionModalOpen = ref(false);
 const isObstacleModalOpen = ref(false);
 const isDependencyModalOpen = ref(false);
 const isAddChildModalOpen = ref(false);
+const isEditModalOpen = ref(false);
 const newMilestoneTitle = ref('');
 const statusError = ref('');
 
@@ -141,6 +142,10 @@ const handleDelete = async () => {
       </RouterLink>
 
       <div class="header-actions">
+        <AppButton variant="primary" size="sm" @click="isEditModalOpen = true">
+          <AppIcon name="edit" size="16" />
+          ویرایش هدف
+        </AppButton>
         <AppButton variant="outline" size="sm" @click="handleExportDeadlineIcs">
           <AppIcon name="clock" size="16" />
           تقویم مهلت (.ics)
@@ -439,6 +444,11 @@ const handleDelete = async () => {
       :initial-parent-id="goal.id"
       @close="isAddChildModalOpen = false"
     />
+    <GoalFormModal
+      :is-open="isEditModalOpen"
+      :initial-goal="goal"
+      @close="isEditModalOpen = false"
+    />
   </div>
 </template>
 
@@ -448,12 +458,17 @@ const handleDelete = async () => {
   flex-direction: column;
   gap: var(--spacing-lg);
   padding-bottom: var(--spacing-2xl);
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: clip;
 }
 
 .top-nav-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
 }
 
 .back-link {
@@ -463,6 +478,7 @@ const handleDelete = async () => {
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
   font-weight: 600;
+  flex-shrink: 0;
 }
 .back-link:hover {
   color: var(--color-accent);
@@ -472,6 +488,7 @@ const handleDelete = async () => {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
+  flex-wrap: wrap;
 }
 
 .detail-overview-card {
@@ -923,5 +940,43 @@ const handleDelete = async () => {
 .empty-hint {
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
+}
+
+@media (max-width: 640px) {
+  .top-nav-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-sm);
+  }
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .detail-overview-card {
+    padding: var(--spacing-md);
+  }
+  .detail-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+  }
+  .section-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+  }
+  .dates-meta-row {
+    flex-direction: column;
+    gap: var(--spacing-xxs);
+  }
+  .metric-numbers-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .prereq-item-card {
+    flex-wrap: wrap;
+  }
 }
 </style>

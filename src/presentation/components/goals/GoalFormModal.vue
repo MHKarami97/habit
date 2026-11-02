@@ -11,6 +11,7 @@ import InteractiveGoalGuideModal from '../help/InteractiveGoalGuideModal.vue';
 import TemplatePickerModal from '../templates/TemplatePickerModal.vue';
 import type { GoalExampleTemplate } from '../../data/interactiveExamples';
 import type { GoalTemplateData } from '@/domain/entities/UserTemplate';
+import { Goal } from '@/domain/entities/Goal';
 import { GoalPriority } from '@/domain/value-objects/GoalPriority';
 import { GoalStatus } from '@/domain/value-objects/GoalStatus';
 import { useGoalStore } from '../../stores/useGoalStore';
@@ -19,6 +20,7 @@ import { usePersianCalendar } from '../../composables/usePersianCalendar';
 const props = defineProps<{
   isOpen: boolean;
   initialParentId?: string;
+  initialGoal?: Goal | null;
 }>();
 
 const emit = defineEmits<{
@@ -70,10 +72,13 @@ const handleSelectGoalTemplate = (tmpl: GoalTemplateData) => {
   }
 };
 
+const modalTitle = computed(() => (props.initialGoal ? 'ویرایش هدف' : 'تعریف هدف جدید'));
+
 const parentOptions = computed(() => {
   const options = [{ value: '', label: 'بدون والد (سطح ۱: سالانه / کلان)' }];
+  const currentEditingId = props.initialGoal?.id;
   for (const g of goalStore.goals) {
-    if (g.canHaveChildren && !g.isArchived) {
+    if (g.canHaveChildren && !g.isArchived && g.id !== currentEditingId && g.parentId !== currentEditingId) {
       options.push({
         value: g.id,
         label: `${g.title} (${g.hierarchyLevelLabel})`
@@ -105,7 +110,8 @@ const calculatedLevelLabel = computed(() => {
 });
 
 const candidatePrerequisites = computed(() => {
-  return goalStore.goals.filter(g => !g.isArchived && g.id !== parentId.value);
+  const currentEditingId = props.initialGoal?.id;
+  return goalStore.goals.filter(g => !g.isArchived && g.id !== parentId.value && g.id !== currentEditingId);
 });
 
 const togglePrereq = (id: string) => {
@@ -117,11 +123,38 @@ const togglePrereq = (id: string) => {
 };
 
 watch(
-  () => [props.isOpen, props.initialParentId] as const,
-  ([isOpen, initParentId]) => {
+  () => [props.isOpen, props.initialGoal, props.initialParentId] as const,
+  ([isOpen, initGoal, initParentId]) => {
     if (isOpen) {
-      if (initParentId) {
-        parentId.value = String(initParentId);
+      if (initGoal) {
+        title.value = initGoal.title;
+        whyStatement.value = initGoal.whyStatement;
+        priority.value = initGoal.priority;
+        status.value = initGoal.status;
+        targetStartDate.value = initGoal.targetStartDate;
+        deadline.value = initGoal.deadline;
+        startValue.value = initGoal.metric.startValue;
+        targetValue.value = initGoal.metric.targetValue;
+        unit.value = initGoal.metric.unit;
+        parentId.value = initGoal.parentId || '';
+        weight.value = initGoal.weight ?? 1;
+        selectedPrereqIds.value = [...(initGoal.blockedByGoalIds || [])];
+        formMode.value = 'quick';
+      } else {
+        title.value = '';
+        whyStatement.value = '';
+        priority.value = 'medium';
+        status.value = 'active';
+        targetStartDate.value = effectiveTodayIso.value;
+        deadline.value = effectiveTodayIso.value;
+        startValue.value = 0;
+        targetValue.value = 10;
+        unit.value = 'مورد';
+        parentId.value = initParentId ? String(initParentId) : '';
+        weight.value = 1;
+        selectedPrereqIds.value = [];
+        wizardStep.value = 1;
+        formMode.value = 'wizard';
       }
     }
   },
@@ -203,20 +236,38 @@ const handleSubmit = async () => {
 
   isSubmitting.value = true;
   try {
-    await goalStore.createGoal({
-      title: title.value,
-      whyStatement: whyStatement.value,
-      priority: priority.value,
-      status: status.value,
-      targetStartDate: targetStartDate.value,
-      deadline: deadline.value,
-      startValue: Number(startValue.value),
-      targetValue: Number(targetValue.value),
-      unit: unit.value,
-      parentId: parentId.value || undefined,
-      weight: Number(weight.value) || 1,
-      blockedByGoalIds: selectedPrereqIds.value
-    });
+    if (props.initialGoal) {
+      await goalStore.updateGoal({
+        id: props.initialGoal.id,
+        title: title.value,
+        whyStatement: whyStatement.value,
+        priority: priority.value,
+        status: status.value,
+        targetStartDate: targetStartDate.value,
+        deadline: deadline.value,
+        startValue: Number(startValue.value),
+        targetValue: Number(targetValue.value),
+        unit: unit.value,
+        parentId: parentId.value || undefined,
+        weight: Number(weight.value) || 1,
+        blockedByGoalIds: selectedPrereqIds.value
+      });
+    } else {
+      await goalStore.createGoal({
+        title: title.value,
+        whyStatement: whyStatement.value,
+        priority: priority.value,
+        status: status.value,
+        targetStartDate: targetStartDate.value,
+        deadline: deadline.value,
+        startValue: Number(startValue.value),
+        targetValue: Number(targetValue.value),
+        unit: unit.value,
+        parentId: parentId.value || undefined,
+        weight: Number(weight.value) || 1,
+        blockedByGoalIds: selectedPrereqIds.value
+      });
+    }
 
     // ریست فرم
     title.value = '';
@@ -235,7 +286,7 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <AppModal :is-open="isOpen" title="تعریف هدف جدید" @close="$emit('close')">
+  <AppModal :is-open="isOpen" :title="modalTitle" @close="$emit('close')">
     <!-- راهنمای تعاملی و قالب‌های آماده -->
     <div class="interactive-guide-trigger-box">
       <button
@@ -477,7 +528,7 @@ const handleSubmit = async () => {
           type="submit"
           :loading="isSubmitting"
         >
-          {{ formMode === 'quick' ? 'ذخیره سریع هدف' : 'ثبت نهایی هدف' }}
+          {{ initialGoal ? 'ذخیره تغییرات هدف' : (formMode === 'quick' ? 'ذخیره سریع هدف' : 'ثبت نهایی هدف') }}
         </AppButton>
       </div>
     </form>

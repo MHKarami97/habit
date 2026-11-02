@@ -12,6 +12,7 @@ import { db } from '@/infrastructure/db/AppDatabase';
 import AppButton from '../components/common/AppButton.vue';
 import AppIcon from '../components/common/AppIcon.vue';
 import BackfillModal from '../components/habits/BackfillModal.vue';
+import HabitFormModal from '../components/habits/HabitFormModal.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -30,6 +31,7 @@ const linkedGoal = computed(() => {
 });
 
 const isBackfillModalOpen = ref(false);
+const isEditModalOpen = ref(false);
 
 onMounted(async () => {
   if (habitStore.habits.length === 0) {
@@ -139,6 +141,10 @@ const handleDelete = async () => {
       </RouterLink>
 
       <div class="header-actions">
+        <AppButton variant="primary" size="sm" @click="isEditModalOpen = true">
+          <AppIcon name="edit" size="16" />
+          ویرایش عادت
+        </AppButton>
         <AppButton variant="outline" size="sm" @click="handleExportIcs">
           <AppIcon name="clock" size="16" />
           تقویم گوشی (.ics)
@@ -315,6 +321,11 @@ const handleDelete = async () => {
       :habit="habit"
       @close="isBackfillModalOpen = false"
     />
+    <HabitFormModal
+      :is-open="isEditModalOpen"
+      :initial-habit="habit"
+      @close="isEditModalOpen = false"
+    />
   </div>
 </template>
 
@@ -324,12 +335,17 @@ const handleDelete = async () => {
   flex-direction: column;
   gap: var(--spacing-lg);
   padding-bottom: var(--spacing-2xl);
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: clip;
 }
 
 .top-nav-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
 }
 
 .back-link {
@@ -339,6 +355,7 @@ const handleDelete = async () => {
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
   font-weight: 600;
+  flex-shrink: 0;
 }
 .back-link:hover {
   color: var(--color-accent);
@@ -348,6 +365,7 @@ const handleDelete = async () => {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
+  flex-wrap: wrap;
 }
 
 .detail-overview-card, .section-card {
@@ -667,5 +685,38 @@ const handleDelete = async () => {
   align-items: center;
   gap: var(--spacing-xs);
   line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .top-nav-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-sm);
+  }
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .detail-overview-card, .section-card {
+    padding: var(--spacing-md);
+  }
+  .detail-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+  }
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+  }
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+  .heatmap-legend-row {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
 }
 </style>

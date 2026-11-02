@@ -5,6 +5,7 @@ import { HabitLog } from '@/domain/entities/HabitLog';
 import { StreakCalculator, StreakAnalysisResult } from '@/domain/services/StreakCalculator';
 import { container } from '@/infrastructure/di/container';
 import { CreateHabitUseCase, CreateHabitInput } from '@/application/use-cases/habits/CreateHabitUseCase';
+import { UpdateHabitUseCase, UpdateHabitInput } from '@/application/use-cases/habits/UpdateHabitUseCase';
 import { CheckInHabitUseCase, CheckInHabitInput } from '@/application/use-cases/habits/CheckInHabitUseCase';
 import { BackfillHabitLogUseCase, BackfillHabitLogInput } from '@/application/use-cases/habits/BackfillHabitLogUseCase';
 import { ToggleFreezeHabitUseCase } from '@/application/use-cases/habits/ToggleFreezeHabitUseCase';
@@ -18,6 +19,7 @@ export const useHabitStore = defineStore('habits', () => {
   const isLoading = ref(false);
 
   const createHabitUseCase = new CreateHabitUseCase(container.habitRepo);
+  const updateHabitUseCase = new UpdateHabitUseCase(container.habitRepo);
   const checkInHabitUseCase = new CheckInHabitUseCase(container.habitRepo, container.habitLogRepo, container.goalRepo);
   const backfillHabitLogUseCase = new BackfillHabitLogUseCase(container.habitRepo, container.habitLogRepo);
   const toggleFreezeHabitUseCase = new ToggleFreezeHabitUseCase(container.habitRepo, container.habitLogRepo);
@@ -61,6 +63,16 @@ export const useHabitStore = defineStore('habits', () => {
 
   const createHabit = async (input: CreateHabitInput) => {
     const habit = await createHabitUseCase.execute(input);
+    await loadHabits();
+    const habitRecord = await db.habits.get(habit.id);
+    if (habitRecord) {
+      await ReminderCoordinator.getInstance().scheduleHabitReminders(habitRecord);
+    }
+    return habit;
+  };
+
+  const updateHabit = async (input: UpdateHabitInput) => {
+    const habit = await updateHabitUseCase.execute(input);
     await loadHabits();
     const habitRecord = await db.habits.get(habit.id);
     if (habitRecord) {
@@ -155,6 +167,7 @@ export const useHabitStore = defineStore('habits', () => {
     getTodayLogForHabit,
     getStreakAnalysis,
     createHabit,
+    updateHabit,
     checkIn,
     backfillLog,
     toggleFreeze,

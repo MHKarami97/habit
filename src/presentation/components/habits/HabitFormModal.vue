@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import AppModal from '../common/AppModal.vue';
 import AppInput from '../common/AppInput.vue';
 import AppSelect from '../common/AppSelect.vue';
@@ -10,14 +10,16 @@ import InteractiveHabitGuideModal from '../help/InteractiveHabitGuideModal.vue';
 import TemplatePickerModal from '../templates/TemplatePickerModal.vue';
 import type { HabitExampleTemplate } from '../../data/interactiveExamples';
 import type { HabitTemplateData } from '@/domain/entities/UserTemplate';
+import { Habit } from '@/domain/entities/Habit';
 import { HabitType } from '@/domain/value-objects/HabitType';
 import { RecurrenceType, RecurrenceConfig } from '@/domain/value-objects/RecurrenceConfig';
 import { useHabitStore } from '../../stores/useHabitStore';
 import { useGoalStore } from '../../stores/useGoalStore';
 import { usePersianCalendar } from '../../composables/usePersianCalendar';
 
-defineProps<{
+const props = defineProps<{
   isOpen: boolean;
+  initialHabit?: Habit | null;
 }>();
 
 const emit = defineEmits<{
@@ -47,6 +49,52 @@ const weeklyFreezeAllowed = ref(true);
 const isSubmitting = ref(false);
 const error = ref('');
 const isGuideModalOpen = ref(false);
+const modalTitle = computed(() => (props.initialHabit ? 'ویرایش عادت' : 'تعریف عادت جدید'));
+
+watch(
+  () => [props.isOpen, props.initialHabit] as const,
+  ([isOpen, initHabit]) => {
+    if (isOpen) {
+      if (initHabit) {
+        title.value = initHabit.title;
+        habitType.value = initHabit.habitType;
+        recurrenceType.value = initHabit.recurrence.type;
+        if (initHabit.recurrence.type === 'weekly_days' && initHabit.recurrence.daysOfWeek) {
+          selectedWeekdays.value = [...initHabit.recurrence.daysOfWeek];
+        } else {
+          selectedWeekdays.value = [0, 1, 2, 3, 4, 5, 6];
+        }
+        if (initHabit.recurrence.type === 'interval' && initHabit.recurrence.everyXDays) {
+          intervalDays.value = initHabit.recurrence.everyXDays;
+        } else {
+          intervalDays.value = 2;
+        }
+        dailyTarget.value = initHabit.dailyTarget;
+        unit.value = initHabit.unit;
+        cue.value = initHabit.cue || '';
+        linkedGoalId.value = initHabit.linkedGoalId || '';
+        reminderTime.value = (initHabit.reminderTimes && initHabit.reminderTimes[0]) || '';
+        weeklyFreezeAllowed.value = initHabit.weeklyFreezeAllowed;
+        formMode.value = 'quick';
+      } else {
+        title.value = '';
+        habitType.value = 'boolean';
+        recurrenceType.value = 'daily';
+        selectedWeekdays.value = [0, 1, 2, 3, 4, 5, 6];
+        intervalDays.value = 2;
+        dailyTarget.value = 1;
+        unit.value = 'بار';
+        cue.value = '';
+        linkedGoalId.value = '';
+        reminderTime.value = '20:00';
+        weeklyFreezeAllowed.value = true;
+        wizardStep.value = 1;
+        formMode.value = 'wizard';
+      }
+    }
+  },
+  { immediate: true }
+);
 
 const handleSelectTemplate = (tmpl: HabitExampleTemplate['data']) => {
   title.value = tmpl.title;
@@ -173,25 +221,40 @@ const handleSubmit = async () => {
 
   isSubmitting.value = true;
   try {
-    await habitStore.createHabit({
-      title: title.value,
-      habitType: habitType.value,
-      recurrence,
-      dailyTarget: Number(dailyTarget.value) || 1,
-      unit: unit.value,
-      cue: cue.value || undefined,
-      linkedGoalId: linkedGoalId.value || undefined,
-      reminderTimes: reminderTime.value ? [reminderTime.value] : [],
-      startDate: effectiveTodayIso.value,
-      weeklyFreezeAllowed: weeklyFreezeAllowed.value
-    });
+    if (props.initialHabit) {
+      await habitStore.updateHabit({
+        id: props.initialHabit.id,
+        title: title.value,
+        habitType: habitType.value,
+        recurrence,
+        dailyTarget: Number(dailyTarget.value) || 1,
+        unit: unit.value,
+        cue: cue.value || undefined,
+        linkedGoalId: linkedGoalId.value || undefined,
+        reminderTimes: reminderTime.value ? [reminderTime.value] : [],
+        weeklyFreezeAllowed: weeklyFreezeAllowed.value
+      });
+    } else {
+      await habitStore.createHabit({
+        title: title.value,
+        habitType: habitType.value,
+        recurrence,
+        dailyTarget: Number(dailyTarget.value) || 1,
+        unit: unit.value,
+        cue: cue.value || undefined,
+        linkedGoalId: linkedGoalId.value || undefined,
+        reminderTimes: reminderTime.value ? [reminderTime.value] : [],
+        startDate: effectiveTodayIso.value,
+        weeklyFreezeAllowed: weeklyFreezeAllowed.value
+      });
+    }
 
     title.value = '';
     cue.value = '';
     wizardStep.value = 1;
     emit('close');
   } catch (err: any) {
-    error.value = err?.message || 'خطا در تعریف عادت';
+    error.value = err?.message || 'خطا در ثبت عادت';
   } finally {
     isSubmitting.value = false;
   }
@@ -199,7 +262,7 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <AppModal :is-open="isOpen" title="تعریف عادت جدید" @close="$emit('close')">
+  <AppModal :is-open="isOpen" :title="modalTitle" @close="$emit('close')">
     <!-- راهنمای تعاملی و قالب‌های آماده -->
     <div class="interactive-guide-trigger-box">
       <button
@@ -384,7 +447,7 @@ const handleSubmit = async () => {
           type="submit"
           :loading="isSubmitting"
         >
-          {{ formMode === 'quick' ? 'ذخیره سریع عادت' : 'ثبت نهایی عادت' }}
+          {{ initialHabit ? 'ذخیره تغییرات عادت' : (formMode === 'quick' ? 'ذخیره سریع عادت' : 'ثبت نهایی عادت') }}
         </AppButton>
       </div>
     </form>

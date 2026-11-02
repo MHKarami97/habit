@@ -9,21 +9,40 @@ defineProps<{
 }>();
 
 const isOpen = ref(false);
+const containerRef = ref<HTMLElement | null>(null);
+const placement = ref<'right' | 'left'>('right');
+
+const toggle = () => {
+  if (!isOpen.value && containerRef.value) {
+    const rect = containerRef.value.getBoundingClientRect();
+    // در چیدمان راست‌به‌چپ، اگر آیکون نزدیک لبه چپ صفحه باشد، باز شدن به چپ باعث بیرون افتادن از صفحه می‌شود.
+    // بنابراین اگر فاصله از لبه چپ کمتر از ۲۹۰ پیکسل باشد، راست‌چین باز شود (place-left) تا به سمت داخل کادر گسترش یابد.
+    if (rect.right < 290) {
+      placement.value = 'left';
+    } else {
+      placement.value = 'right';
+    }
+  }
+  isOpen.value = !isOpen.value;
+};
 </script>
 
 <template>
-  <div class="field-help-container">
+  <div ref="containerRef" class="field-help-container">
     <button
       type="button"
       class="help-button touch-target"
       :aria-expanded="isOpen"
       title="راهنما و نمونه‌های صحیح"
-      @click="isOpen = !isOpen"
+      @click="toggle"
     >
       ؟
     </button>
 
-    <div v-if="isOpen" class="help-popover animate-slide-up">
+    <div
+      v-if="isOpen"
+      :class="['help-popover animate-slide-up', `place-${placement}`]"
+    >
       <div class="popover-body">
         <p class="popover-tip">{{ tip }}</p>
 
@@ -85,14 +104,39 @@ const isOpen = ref(false);
 .help-popover {
   position: absolute;
   top: calc(100% + 6px);
-  right: 0;
   width: 280px;
+  max-width: calc(100vw - 32px);
   background-color: var(--color-bg-surface);
   border: var(--border-width-hairline) solid var(--color-border-strong);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
   padding: var(--spacing-sm);
-  z-index: 60;
+  z-index: 100;
+  box-sizing: border-box;
+}
+
+.help-popover.place-right {
+  right: 0;
+  left: auto;
+}
+
+.help-popover.place-left {
+  left: 0;
+  right: auto;
+}
+
+@media (max-width: 600px) {
+  .help-popover {
+    position: fixed;
+    top: auto;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    right: 16px;
+    left: 16px;
+    width: auto;
+    max-width: none;
+    z-index: 1200;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+  }
 }
 
 .popover-tip {
@@ -144,13 +188,12 @@ const isOpen = ref(false);
 
 .popover-close-btn {
   width: 100%;
-  padding: 4px 0;
+  padding: 6px 0;
   font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--color-accent);
   text-align: center;
   border-top: var(--border-width-hairline) solid var(--color-border-subtle);
-  background: transparent;
   cursor: pointer;
 }
 </style>
