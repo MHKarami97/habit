@@ -10,7 +10,11 @@ import { CreateGoalUseCase, CreateGoalInput } from '@/application/use-cases/goal
 import { UpdateGoalUseCase, UpdateGoalInput } from '@/application/use-cases/goals/UpdateGoalUseCase';
 import { TransitionGoalStatusUseCase } from '@/application/use-cases/goals/TransitionGoalStatusUseCase';
 import { LogActionUseCase, LogActionInput } from '@/application/use-cases/goals/LogActionUseCase';
+import { UpdateActionLogUseCase, UpdateActionLogInput } from '@/application/use-cases/goals/UpdateActionLogUseCase';
+import { DeleteActionLogUseCase } from '@/application/use-cases/goals/DeleteActionLogUseCase';
 import { RecordObstacleUseCase, RecordObstacleInput } from '@/application/use-cases/goals/RecordObstacleUseCase';
+import { UpdateObstacleLogUseCase, UpdateObstacleLogInput } from '@/application/use-cases/goals/UpdateObstacleLogUseCase';
+import { DeleteObstacleLogUseCase } from '@/application/use-cases/goals/DeleteObstacleLogUseCase';
 import { DuplicateGoalUseCase } from '@/application/use-cases/goals/DuplicateGoalUseCase';
 import { GoalHierarchyService, type GoalTreeNode } from '@/domain/services/GoalHierarchyService';
 import { GoalDependencyService } from '@/domain/services/GoalDependencyService';
@@ -36,7 +40,11 @@ export const useGoalStore = defineStore('goals', () => {
   const updateGoalUseCase = new UpdateGoalUseCase(container.goalRepo);
   const transitionStatusUseCase = new TransitionGoalStatusUseCase(container.goalRepo);
   const logActionUseCase = new LogActionUseCase(container.goalRepo);
+  const updateActionLogUseCase = new UpdateActionLogUseCase(container.goalRepo);
+  const deleteActionLogUseCase = new DeleteActionLogUseCase(container.goalRepo);
   const recordObstacleUseCase = new RecordObstacleUseCase(container.goalRepo);
+  const updateObstacleLogUseCase = new UpdateObstacleLogUseCase(container.goalRepo);
+  const deleteObstacleLogUseCase = new DeleteObstacleLogUseCase(container.goalRepo);
   const duplicateGoalUseCase = new DuplicateGoalUseCase(container.goalRepo);
 
   const loadGoals = async (includeArchived = false) => {
@@ -230,10 +238,34 @@ export const useGoalStore = defineStore('goals', () => {
     return action;
   };
 
+  const updateActionLog = async (input: UpdateActionLogInput) => {
+    const action = await updateActionLogUseCase.execute(input);
+    await loadGoalDetails(input.goalId);
+    await loadGoals();
+    return action;
+  };
+
+  const deleteActionLog = async (actionLogId: string, goalId: string) => {
+    await deleteActionLogUseCase.execute({ id: actionLogId, goalId });
+    await loadGoalDetails(goalId);
+    await loadGoals();
+  };
+
   const recordObstacle = async (input: RecordObstacleInput) => {
     const obs = await recordObstacleUseCase.execute(input);
     await loadGoalDetails(input.goalId);
     return obs;
+  };
+
+  const updateObstacleLog = async (input: UpdateObstacleLogInput) => {
+    const obs = await updateObstacleLogUseCase.execute(input);
+    await loadGoalDetails(input.goalId);
+    return obs;
+  };
+
+  const deleteObstacleLog = async (obstacleLogId: string, goalId: string) => {
+    await deleteObstacleLogUseCase.execute({ id: obstacleLogId, goalId });
+    await loadGoalDetails(goalId);
   };
 
   const duplicateGoal = async (goalId: string) => {
@@ -281,7 +313,11 @@ export const useGoalStore = defineStore('goals', () => {
     updateGoalDependencies,
     updateGoalHierarchy,
     logAction,
+    updateActionLog,
+    deleteActionLog,
     recordObstacle,
+    updateObstacleLog,
+    deleteObstacleLog,
     duplicateGoal,
     deleteGoal,
     toggleMilestone,

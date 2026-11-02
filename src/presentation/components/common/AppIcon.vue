@@ -29,7 +29,8 @@ defineProps<{
     | 'clock'
     | 'lock'
     | 'alert-triangle'
-    | 'backspace';
+    | 'backspace'
+    | 'minus';
   size?: number | string;
 }>();
 </script>
@@ -50,6 +51,8 @@ defineProps<{
     <path v-if="name === 'check'" d="M20 6L9 17l-5-5" />
     <!-- plus -->
     <path v-else-if="name === 'plus'" d="M12 5v14M5 12h14" />
+    <!-- minus -->
+    <line v-else-if="name === 'minus'" x1="5" y1="12" x2="19" y2="12" />
     <!-- trash -->
     <path v-else-if="name === 'trash'" d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6" />
     <!-- edit -->

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed, watch } from 'vue';
 import AppModal from '../common/AppModal.vue';
 import AppInput from '../common/AppInput.vue';
 import AppButton from '../common/AppButton.vue';
@@ -23,19 +23,47 @@ const { effectiveTodayIso, formatShortDate } = usePersianCalendar();
 const backfillDate = ref(effectiveTodayIso.value);
 const isDatePickerOpen = ref(false);
 const isCompleted = ref(true);
+const customValue = ref<number>(props.habit?.dailyTarget ?? 1);
 const note = ref('');
 const isSubmitting = ref(false);
 const error = ref('');
+
+const isNumericHabit = computed(() => props.habit && props.habit.habitType !== 'boolean');
+
+watch(
+  () => props.isOpen,
+  (open) => {
+    if (open && props.habit) {
+      backfillDate.value = effectiveTodayIso.value;
+      customValue.value = props.habit.dailyTarget;
+      isCompleted.value = true;
+      note.value = '';
+      error.value = '';
+    }
+  }
+);
+
+const onValueChange = () => {
+  if (props.habit) {
+    isCompleted.value = Number(customValue.value) >= props.habit.dailyTarget;
+  }
+};
 
 const handleSubmit = async () => {
   if (!props.habit) return;
   error.value = '';
   isSubmitting.value = true;
   try {
+    const finalValue = isNumericHabit.value ? Math.max(0, Number(customValue.value) || 0) : undefined;
+    const finalCompleted = isNumericHabit.value
+      ? finalValue! >= props.habit.dailyTarget
+      : isCompleted.value;
+
     await habitStore.backfillLog({
       habitId: props.habit.id,
       date: backfillDate.value,
-      isCompleted: isCompleted.value,
+      isCompleted: finalCompleted,
+      value: finalValue,
       note: note.value || undefined,
       todayIso: effectiveTodayIso.value
     });
@@ -64,7 +92,23 @@ const handleSubmit = async () => {
         </button>
       </div>
 
-      <label class="checkbox-label">
+      <div v-if="isNumericHabit" class="field-container">
+        <label class="field-label">
+          مقدار انجام‌شده (هدف روزانه: {{ habit?.dailyTarget }} {{ habit?.unit || '' }}):
+        </label>
+        <AppInput
+          v-model.number="customValue"
+          type="number"
+          min="0"
+          placeholder="مثلاً ۰ یا ۱ یا بیشتر"
+          @input="onValueChange"
+        />
+        <span class="value-hint">
+          وضعیت: {{ isCompleted ? 'تکمیل‌شده (رسیده به سقف هدف)' : 'ناتمام / کمتر از سقف هدف' }}
+        </span>
+      </div>
+
+      <label v-else class="checkbox-label">
         <input v-model="isCompleted" type="checkbox" class="app-checkbox" />
         <span>در این روز عادت با موفقیت انجام شد</span>
       </label>
@@ -117,6 +161,11 @@ const handleSubmit = async () => {
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--color-text-secondary);
+}
+
+.value-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
 }
 
 .date-select-btn {

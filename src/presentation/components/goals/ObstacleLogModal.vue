@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed, watch } from 'vue';
 import AppModal from '../common/AppModal.vue';
 import AppInput from '../common/AppInput.vue';
 import AppSelect from '../common/AppSelect.vue';
 import AppButton from '../common/AppButton.vue';
 import AppHelpTip from '../common/AppHelpTip.vue';
-import { ObstacleCategory } from '@/domain/entities/ObstacleLog';
+import { ObstacleLog, ObstacleCategory } from '@/domain/entities/ObstacleLog';
 import { useGoalStore } from '../../stores/useGoalStore';
 import { usePersianCalendar } from '../../composables/usePersianCalendar';
 
 const props = defineProps<{
   isOpen: boolean;
   goalId: string;
+  initialObstacle?: ObstacleLog | null;
 }>();
 
 const emit = defineEmits<{
@@ -27,6 +28,31 @@ const note = ref('');
 const ifThenPlan = ref('');
 const isSubmitting = ref(false);
 const error = ref('');
+
+const modalTitle = computed(() =>
+  props.initialObstacle ? 'ویرایش مانع و برنامه اگر-آنگاه' : 'ثبت مانع و برنامه اگر-آنگاه'
+);
+
+watch(
+  () => [props.isOpen, props.initialObstacle] as const,
+  ([isOpen, initObs]) => {
+    if (isOpen) {
+      if (initObs) {
+        category.value = initObs.category;
+        customCategory.value = initObs.customCategory || '';
+        note.value = initObs.note;
+        ifThenPlan.value = initObs.ifThenPlan;
+      } else {
+        category.value = 'fatigue';
+        customCategory.value = '';
+        note.value = '';
+        ifThenPlan.value = '';
+      }
+      error.value = '';
+    }
+  },
+  { immediate: true }
+);
 
 const categoryOptions = [
   { value: 'fatigue', label: 'خستگی جسمی یا ذهنی' },
@@ -47,14 +73,25 @@ const handleSubmit = async () => {
 
   isSubmitting.value = true;
   try {
-    await goalStore.recordObstacle({
-      goalId: props.goalId,
-      date: effectiveTodayIso.value,
-      category: category.value,
-      customCategory: category.value === 'custom' ? customCategory.value : undefined,
-      note: note.value,
-      ifThenPlan: ifThenPlan.value
-    });
+    if (props.initialObstacle) {
+      await goalStore.updateObstacleLog({
+        id: props.initialObstacle.id,
+        goalId: props.goalId,
+        category: category.value,
+        customCategory: category.value === 'custom' ? customCategory.value : undefined,
+        note: note.value,
+        ifThenPlan: ifThenPlan.value
+      });
+    } else {
+      await goalStore.recordObstacle({
+        goalId: props.goalId,
+        date: effectiveTodayIso.value,
+        category: category.value,
+        customCategory: category.value === 'custom' ? customCategory.value : undefined,
+        note: note.value,
+        ifThenPlan: ifThenPlan.value
+      });
+    }
 
     note.value = '';
     ifThenPlan.value = '';
@@ -68,7 +105,7 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <AppModal :is-open="isOpen" title="ثبت مانع و برنامه اگر-آنگاه" @close="$emit('close')">
+  <AppModal :is-open="isOpen" :title="modalTitle" @close="$emit('close')">
     <form class="obstacle-form" @submit.prevent="handleSubmit">
       <p v-if="error" class="form-error">{{ error }}</p>
 
@@ -98,21 +135,27 @@ const handleSubmit = async () => {
 
       <div class="field-container">
         <div class="label-with-tip">
-          <label class="field-label">برنامه اگر-آنگاه (If-Then Plan) *</label>
+          <label class="field-label">
+            برنامه اگر-آنگاه (Implementation Intention) *
+          </label>
           <AppHelpTip
-            tip="قصد اجرایی (Implementation Intentions): تعیین کنید در مواجهه دوباره با این مانع دقیقاً چه واکنشی نشان می‌دهید."
-            good-example="اگر گوشی مرا وسوسه کرد، آنگاه آن را در کشوی اتاق دیگر می‌گذارم و تایمر ۲۵ دقیقه می‌گذارم."
-            bad-example="سعی می‌کنم کمتر گوشی دست بگیرم."
-            source-note="پیتر گولویتزر (Peter Gollwitzer, 1999)"
+            tip="برنامه اگر-آنگاه طبق پژوهش‌های پیتر گولویتزر شانس غلبه بر وسوسه را بیش از دو برابر می‌کند. ساختار: اگر [موقعیت رخ داد]، آنگاه [رفتار مشخصی انجام می‌دهم]."
+            good-example="اگر ساعت ۱۰ شب احساس خستگی کردم، آنگاه گوشی را در اتاق دیگر می‌گذارم و ۵ صفحه کتاب کاغذی می‌خوانم."
+            bad-example="سعی می‌کنم کمتر خسته بشم و بیشتر تلاش کنم."
+            source-note="Gollwitzer (1999) - Implementation Intentions"
           />
         </div>
+
         <textarea
           v-model="ifThenPlan"
           class="app-textarea"
           rows="3"
-          placeholder="اگر [مانع رخ داد]، آنگاه [واکنش مشخص من این خواهد بود]..."
+          placeholder="اگر [مانع پیش آمد]، آنگاه [این واکنش مشخص را انجام می‌دهم]..."
           required
         />
+        <span class="field-hint">
+          فرمول طلایی: اگر (موقعیت/مانع) پیش آمد، آنگاه (یک کار کوچک مشخص) انجام می‌دهم.
+        </span>
       </div>
 
       <div class="form-actions">
@@ -120,7 +163,7 @@ const handleSubmit = async () => {
           انصراف
         </AppButton>
         <AppButton variant="primary" size="md" type="submit" :loading="isSubmitting">
-          ثبت مانع
+          {{ initialObstacle ? 'ذخیره تغییرات' : 'ثبت مانع' }}
         </AppButton>
       </div>
     </form>
@@ -148,27 +191,34 @@ const handleSubmit = async () => {
 .label-with-tip {
   display: flex;
   align-items: center;
+  gap: var(--spacing-xxs);
 }
 
 .field-label {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--color-text-secondary);
 }
 
+.field-hint {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
 .app-textarea {
   width: 100%;
-  padding: var(--spacing-xs) var(--spacing-md);
-  background-color: var(--color-bg-surface-soft);
-  border: var(--border-width-regular) solid var(--color-border-subtle);
+  padding: var(--spacing-sm);
+  background-color: var(--color-bg-surface-elevated);
+  border: var(--border-width-hairline) solid var(--color-border-subtle);
   border-radius: var(--radius-md);
   color: var(--color-text-primary);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   resize: vertical;
 }
+
 .app-textarea:focus {
+  outline: none;
   border-color: var(--color-accent);
-  background-color: var(--color-bg-surface);
 }
 
 .form-actions {

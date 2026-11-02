@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed, watch } from 'vue';
 import AppModal from '../common/AppModal.vue';
 import AppInput from '../common/AppInput.vue';
 import AppButton from '../common/AppButton.vue';
+import { ActionLog } from '@/domain/entities/ActionLog';
 import { useGoalStore } from '../../stores/useGoalStore';
 import { usePersianCalendar } from '../../composables/usePersianCalendar';
 
 const props = defineProps<{
   isOpen: boolean;
   goalId: string;
+  initialAction?: ActionLog | null;
 }>();
 
 const emit = defineEmits<{
@@ -25,6 +27,31 @@ const nextStep = ref('');
 const isSubmitting = ref(false);
 const error = ref('');
 
+const modalTitle = computed(() =>
+  props.initialAction ? 'ویرایش اقدام (Action Log)' : 'ثبت اقدام انجام‌شده (Action Log)'
+);
+
+watch(
+  () => [props.isOpen, props.initialAction] as const,
+  ([isOpen, initAct]) => {
+    if (isOpen) {
+      if (initAct) {
+        description.value = initAct.description;
+        progressDelta.value = initAct.progressDelta;
+        durationMinutes.value = initAct.durationMinutes;
+        nextStep.value = initAct.nextStep || '';
+      } else {
+        description.value = '';
+        progressDelta.value = 1;
+        durationMinutes.value = 30;
+        nextStep.value = '';
+      }
+      error.value = '';
+    }
+  },
+  { immediate: true }
+);
+
 const handleSubmit = async () => {
   error.value = '';
   if (!description.value.trim()) {
@@ -34,14 +61,25 @@ const handleSubmit = async () => {
 
   isSubmitting.value = true;
   try {
-    await goalStore.logAction({
-      goalId: props.goalId,
-      date: effectiveTodayIso.value,
-      description: description.value,
-      progressDelta: Number(progressDelta.value),
-      durationMinutes: Number(durationMinutes.value),
-      nextStep: nextStep.value || undefined
-    });
+    if (props.initialAction) {
+      await goalStore.updateActionLog({
+        id: props.initialAction.id,
+        goalId: props.goalId,
+        description: description.value,
+        progressDelta: Number(progressDelta.value),
+        durationMinutes: Number(durationMinutes.value),
+        nextStep: nextStep.value || undefined
+      });
+    } else {
+      await goalStore.logAction({
+        goalId: props.goalId,
+        date: effectiveTodayIso.value,
+        description: description.value,
+        progressDelta: Number(progressDelta.value),
+        durationMinutes: Number(durationMinutes.value),
+        nextStep: nextStep.value || undefined
+      });
+    }
 
     description.value = '';
     nextStep.value = '';
@@ -55,7 +93,7 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <AppModal :is-open="isOpen" title="ثبت اقدام انجام‌شده (Action Log)" @close="$emit('close')">
+  <AppModal :is-open="isOpen" :title="modalTitle" @close="$emit('close')">
     <form class="action-form" @submit.prevent="handleSubmit">
       <p v-if="error" class="form-error">{{ error }}</p>
 
@@ -91,7 +129,7 @@ const handleSubmit = async () => {
           انصراف
         </AppButton>
         <AppButton variant="primary" size="md" type="submit" :loading="isSubmitting">
-          ثبت اقدام
+          {{ initialAction ? 'ذخیره تغییرات' : 'ثبت اقدام' }}
         </AppButton>
       </div>
     </form>

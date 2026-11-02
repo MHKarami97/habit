@@ -5,7 +5,8 @@ import { GoalStatus, getGoalStatusLabel } from '@/domain/value-objects/GoalStatu
 import { GoalStateMachine } from '@/domain/state-machine/GoalStateMachine';
 import { Goal } from '@/domain/entities/Goal';
 import { Milestone } from '@/domain/entities/Milestone';
-import { getObstacleCategoryLabel } from '@/domain/entities/ObstacleLog';
+import { ActionLog } from '@/domain/entities/ActionLog';
+import { ObstacleLog, getObstacleCategoryLabel } from '@/domain/entities/ObstacleLog';
 import { db } from '@/infrastructure/db/AppDatabase';
 import AppButton from '../components/common/AppButton.vue';
 import AppProgressBar from '../components/common/AppProgressBar.vue';
@@ -36,8 +37,42 @@ const isObstacleModalOpen = ref(false);
 const isDependencyModalOpen = ref(false);
 const isAddChildModalOpen = ref(false);
 const isEditModalOpen = ref(false);
+const selectedActionToEdit = ref<ActionLog | null>(null);
+const selectedObstacleToEdit = ref<ObstacleLog | null>(null);
 const newMilestoneTitle = ref('');
 const statusError = ref('');
+
+const openCreateActionModal = () => {
+  selectedActionToEdit.value = null;
+  isActionModalOpen.value = true;
+};
+
+const handleEditAction = (action: ActionLog) => {
+  selectedActionToEdit.value = action;
+  isActionModalOpen.value = true;
+};
+
+const handleDeleteAction = async (action: ActionLog) => {
+  if (confirm(`آیا از حذف اقدام «${action.description}» مطمئن هستید؟`)) {
+    await goalStore.deleteActionLog(action.id, goalId.value);
+  }
+};
+
+const openCreateObstacleModal = () => {
+  selectedObstacleToEdit.value = null;
+  isObstacleModalOpen.value = true;
+};
+
+const handleEditObstacle = (obstacle: ObstacleLog) => {
+  selectedObstacleToEdit.value = obstacle;
+  isObstacleModalOpen.value = true;
+};
+
+const handleDeleteObstacle = async (obstacle: ObstacleLog) => {
+  if (confirm('آیا از حذف این مانع و برنامه اگر-آنگاه آن مطمئن هستید؟')) {
+    await goalStore.deleteObstacleLog(obstacle.id, goalId.value);
+  }
+};
 
 const parentGoal = computed(() => {
   return goalStore.getGoalParent(goalId.value);
@@ -367,7 +402,7 @@ const handleDelete = async () => {
     <section class="sub-section">
       <div class="section-header-row">
         <h3 class="section-heading">قدم‌های برداشته‌شده (Action Log)</h3>
-        <AppButton variant="primary" size="sm" @click="isActionModalOpen = true">
+        <AppButton variant="primary" size="sm" @click="openCreateActionModal">
           <AppIcon name="plus" size="16" />
           ثبت اقدام جدید
         </AppButton>
@@ -380,8 +415,32 @@ const handleDelete = async () => {
           class="action-item-card"
         >
           <div class="action-top-row">
-            <span class="action-date">{{ formatShortDate(act.date) }}</span>
-            <span class="action-duration">{{ localizeDigits(act.durationMinutes) }} دقیقه</span>
+            <div class="action-meta-left">
+              <span class="action-date">{{ formatShortDate(act.date) }}</span>
+              <span class="action-duration">{{ localizeDigits(act.durationMinutes) }} دقیقه</span>
+              <span v-if="act.progressDelta > 0" class="action-delta">
+                {{ localizeDigits(act.progressDelta) }}+ سنجه
+              </span>
+            </div>
+
+            <div class="card-item-actions">
+              <button
+                type="button"
+                class="item-icon-btn touch-target"
+                title="ویرایش اقدام"
+                @click="handleEditAction(act)"
+              >
+                <AppIcon name="edit" size="14" />
+              </button>
+              <button
+                type="button"
+                class="item-icon-btn text-danger touch-target"
+                title="حذف اقدام"
+                @click="handleDeleteAction(act)"
+              >
+                <AppIcon name="trash" size="14" />
+              </button>
+            </div>
           </div>
           <p class="action-desc">{{ act.description }}</p>
           <div v-if="act.nextStep" class="next-step-box">
@@ -396,7 +455,7 @@ const handleDelete = async () => {
     <section class="sub-section">
       <div class="section-header-row">
         <h3 class="section-heading">موانع و برنامه‌های اگر-آنگاه</h3>
-        <AppButton variant="secondary" size="sm" @click="isObstacleModalOpen = true">
+        <AppButton variant="secondary" size="sm" @click="openCreateObstacleModal">
           <AppIcon name="plus" size="16" />
           ثبت مانع
         </AppButton>
@@ -409,10 +468,31 @@ const handleDelete = async () => {
           class="obstacle-item-card"
         >
           <div class="obs-top-row">
-            <span class="obs-category-badge">
-              {{ getObstacleCategoryLabel(obs.category, obs.customCategory) }}
-            </span>
-            <span class="obs-date">{{ formatShortDate(obs.date) }}</span>
+            <div class="obs-meta-left">
+              <span class="obs-category-badge">
+                {{ getObstacleCategoryLabel(obs.category, obs.customCategory) }}
+              </span>
+              <span class="obs-date">{{ formatShortDate(obs.date) }}</span>
+            </div>
+
+            <div class="card-item-actions">
+              <button
+                type="button"
+                class="item-icon-btn touch-target"
+                title="ویرایش مانع"
+                @click="handleEditObstacle(obs)"
+              >
+                <AppIcon name="edit" size="14" />
+              </button>
+              <button
+                type="button"
+                class="item-icon-btn text-danger touch-target"
+                title="حذف مانع"
+                @click="handleDeleteObstacle(obs)"
+              >
+                <AppIcon name="trash" size="14" />
+              </button>
+            </div>
           </div>
           <p v-if="obs.note" class="obs-note">{{ obs.note }}</p>
           <div class="if-then-box">
@@ -427,12 +507,14 @@ const handleDelete = async () => {
     <ActionLogModal
       :is-open="isActionModalOpen"
       :goal-id="goal.id"
-      @close="isActionModalOpen = false"
+      :initial-action="selectedActionToEdit"
+      @close="isActionModalOpen = false; selectedActionToEdit = null"
     />
     <ObstacleLogModal
       :is-open="isObstacleModalOpen"
       :goal-id="goal.id"
-      @close="isObstacleModalOpen = false"
+      :initial-obstacle="selectedObstacleToEdit"
+      @close="isObstacleModalOpen = false; selectedObstacleToEdit = null"
     />
     <GoalDependencyModal
       :is-open="isDependencyModalOpen"
@@ -897,8 +979,56 @@ const handleDelete = async () => {
 .action-top-row, .obs-top-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
+  gap: var(--spacing-xs);
+}
+
+.action-meta-left, .obs-meta-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
+.action-delta {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-accent);
+  background-color: var(--color-accent-subtle);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.card-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.item-icon-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.item-icon-btn:hover {
+  background-color: var(--color-bg-surface-elevated);
+  color: var(--color-text-primary);
+}
+
+.item-icon-btn.text-danger:hover {
+  background-color: var(--color-danger-subtle);
+  color: var(--color-danger);
 }
 
 .action-desc {

@@ -40,10 +40,10 @@ export class CheckInHabitUseCase {
     } else {
       // مقداری یا زمانی
       if (input.customValue !== undefined) {
-        nextValue = input.customValue;
+        nextValue = Math.max(0, input.customValue);
       } else {
         const curVal = existingLog ? existingLog.value : 0;
-        nextValue = curVal + (habit.habitType === 'numeric' ? 1 : 15);
+        nextValue = Math.max(0, curVal + (habit.habitType === 'numeric' ? 1 : 15));
       }
       nextCompleted = nextValue >= habit.dailyTarget;
     }
@@ -62,14 +62,26 @@ export class CheckInHabitUseCase {
     await this.habitLogRepo.save(log);
 
     // سهم عادت در پیشرفت هدف مرتبط (در صورت اتصال)
-    if (habit.linkedGoalId && this.goalRepo && nextCompleted && (!existingLog || !existingLog.isCompleted)) {
+    if (habit.linkedGoalId && this.goalRepo) {
       const goal = await this.goalRepo.findById(habit.linkedGoalId);
       if (goal && goal.status === 'active') {
-        const updatedGoal = goal.withMetricValue(
-          goal.metric.currentValue + (habit.habitType === 'boolean' ? 1 : log.value),
-          new Date().toISOString()
-        );
-        await this.goalRepo.save(updatedGoal);
+        if (nextCompleted && (!existingLog || !existingLog.isCompleted)) {
+          // تکمیل تازه عادت -> افزودن به سنجه هدف
+          const addition = habit.habitType === 'boolean' ? 1 : log.value;
+          const updatedGoal = goal.withMetricValue(
+            goal.metric.currentValue + addition,
+            new Date().toISOString()
+          );
+          await this.goalRepo.save(updatedGoal);
+        } else if (!nextCompleted && existingLog && existingLog.isCompleted) {
+          // بازگشت و لغو تکمیل عادت -> کسر از سنجه هدف
+          const deduction = habit.habitType === 'boolean' ? 1 : existingLog.value;
+          const updatedGoal = goal.withMetricValue(
+            Math.max(0, goal.metric.currentValue - deduction),
+            new Date().toISOString()
+          );
+          await this.goalRepo.save(updatedGoal);
+        }
       }
     }
 
